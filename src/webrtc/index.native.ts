@@ -14,9 +14,6 @@ export {
 
 export { RTCView as VideoRenderer } from 'react-native-webrtc';
 
-export type { RTCPeerConnectionConfiguration } from 'react-native-webrtc';
-export type { MediaStreamConstraints } from 'react-native-webrtc';
-
 /** Get user media (camera + mic) — wraps react-native-webrtc's mediaDevices */
 import { mediaDevices } from 'react-native-webrtc';
 

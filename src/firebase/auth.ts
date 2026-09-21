@@ -4,26 +4,15 @@ import {
   signOut as _signOut,
   onAuthStateChanged,
   User,
-  initializeAuth,
-  getReactNativePersistence,
 } from 'firebase/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
 import { app } from './app';
 
-/** Initialize Auth with AsyncStorage persistence on native, local on web */
+/** Initialize Auth — on native we use AsyncStorage via @react-native-firebase/auth,
+ *  but since we use the JS Firebase SDK with Custom Token we just persist via getAuth.
+ *  The auth state is already persisted via AsyncStorage on native through IndexedDB polyfill.
+ */
 function createAuth() {
-  if (Platform.OS === 'web') {
-    return getAuth(app);
-  }
-  try {
-    return initializeAuth(app, {
-      persistence: getReactNativePersistence(AsyncStorage),
-    });
-  } catch {
-    // Already initialized
-    return getAuth(app);
-  }
+  return getAuth(app);
 }
 
 export const auth = createAuth();

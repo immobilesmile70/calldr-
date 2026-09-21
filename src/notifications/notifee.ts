@@ -1,11 +1,20 @@
 import { Platform } from 'react-native';
-import type notifeeType from '@notifee/react-native';
-import type { Event } from '@notifee/react-native';
+import notifeeInstance, {
+  AndroidCategory,
+  AndroidImportance,
+  AndroidForegroundServiceType,
+  Event,
+} from '@notifee/react-native';
 
 // Lazy notifee import (native only)
-let notifee: typeof notifeeType | null = null;
-if (Platform.OS !== 'web') {
-  notifee = require('@notifee/react-native').default as typeof notifeeType;
+let notifee: typeof notifeeInstance | null = null;
+if (Platform.OS !== 'android') {
+  // on iOS or web
+  if (Platform.OS !== 'web') {
+    notifee = notifeeInstance;
+  }
+} else {
+  notifee = notifeeInstance;
 }
 
 const INCOMING_CALL_CHANNEL_ID = 'calldr-incoming-call';
@@ -30,7 +39,7 @@ export async function showIncomingCallNotification(
   await notifee.createChannel({
     id: INCOMING_CALL_CHANNEL_ID,
     name: 'Incoming Calls',
-    importance: 5, // IMPORTANCE_HIGH
+    importance: AndroidImportance.HIGH,
     vibration: true,
     vibrationPattern: [0, 500, 250, 500],
     sound: 'default',
@@ -52,12 +61,12 @@ export async function showIncomingCallNotification(
     },
     android: {
       channelId: INCOMING_CALL_CHANNEL_ID,
-      category: 'call' as const,
+      category: AndroidCategory.CALL,
       fullScreenAction: {
         id: 'full_screen',
         launchActivity: 'default',
       },
-      importance: 5,
+      importance: AndroidImportance.HIGH,
       ongoing: true,
       asForegroundService: false,
       timeoutAfter: 30_000,
@@ -96,7 +105,7 @@ export async function showOngoingCallNotification(
   await notifee.createChannel({
     id: ONGOING_CALL_CHANNEL_ID,
     name: 'Ongoing Call',
-    importance: 3, // IMPORTANCE_DEFAULT
+    importance: AndroidImportance.DEFAULT,
   });
 
   await notifee.displayNotification({
@@ -107,7 +116,10 @@ export async function showOngoingCallNotification(
       channelId: ONGOING_CALL_CHANNEL_ID,
       ongoing: true,
       asForegroundService: true,
-      foregroundServiceTypes: ['microphone', 'camera'],
+      foregroundServiceTypes: [
+        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_CAMERA,
+      ],
       actions: [
         {
           title: 'Hang up',
@@ -149,10 +161,12 @@ export async function handleNotifeeBackgroundEvent({
   if (actionId === 'decline_call') {
     // Need to restore auth state before writing RTDB
     // On Android, the auth state persists via AsyncStorage
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { setCallState } = require('@/firebase/rtdb');
     await setCallState(roomId, 'declined', { endedBy: 'callee' });
     await dismissCallNotification(roomId);
   } else if (actionId === 'hang_up_call') {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { setCallState } = require('@/firebase/rtdb');
     await setCallState(roomId, 'ended', { endedBy: 'callee' });
     await dismissOngoingCallNotification();

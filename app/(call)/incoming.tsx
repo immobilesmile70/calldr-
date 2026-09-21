@@ -1,25 +1,18 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
-  Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@/ui/Avatar';
 import { PillButton } from '@/ui/PillButton';
 import { Wordmark } from '@/ui/Wordmark';
-import { getIdToken } from '@/firebase/auth';
 import { setCallState, deleteIncoming } from '@/firebase/rtdb';
 import { useAuth } from '@/lib/useAuth';
 import { colors, spacing, fontSize, radii } from '@/theme/tokens';
-
-const API_URL =
-  Platform.OS === 'web'
-    ? '/api'
-    : (process.env.EXPO_PUBLIC_API_URL ?? '') + '/api';
 
 export default function IncomingCallScreen() {
   const { user } = useAuth();

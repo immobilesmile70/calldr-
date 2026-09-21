@@ -21,7 +21,7 @@ const API_URL =
     : (process.env.EXPO_PUBLIC_API_URL ?? '') + '/api';
 
 export default function UsernameScreen() {
-  const { user, refreshUserDoc } = useAuth();
+  const { refreshUserDoc } = useAuth();
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

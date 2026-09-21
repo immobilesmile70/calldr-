@@ -1,22 +1,10 @@
 /**
  * WebRTC peer connection manager.
  *
- * Handles:
- * - Creating RTCPeerConnection with ICE servers from /api/calls/ice
- * - Offer/answer creation and SDP exchange
- * - ICE candidate queuing (trickle ICE — queue until remote desc is set)
- * - ICE restart on disconnection/failure
- * - Sender bitrate constraints (video ~600kbps, Opus DTX/FEC)
- * - Media track management
+ * Intentionally uses `any` in places where react-native-webrtc types diverge
+ * from browser WebRTC types. The runtime behaviour is correct on both platforms.
  */
 import { Platform } from 'react-native';
-
-// Platform-resolved imports (metro resolves .native.ts / .web.ts)
-import {
-  RTCPeerConnection,
-  RTCSessionDescription,
-  RTCIceCandidate,
-} from './index';
 
 const API_URL =
   Platform.OS === 'web'
@@ -54,25 +42,32 @@ export interface PeerOptions {
   onConnectionStateChange: OnConnectionStateChange;
 }
 
-export function createPeerConnection(opts: PeerOptions): RTCPeerConnection {
-  const pc = new RTCPeerConnection({
-    iceServers: opts.iceServers as RTCIceServer[],
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyPC = any;
+
+export function createPeerConnection(opts: PeerOptions): AnyPC {
+  // Platform-resolved at runtime — metro picks .native.ts or .web.ts
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { RTCPeerConnection } = require('./index');
+
+  const pc: AnyPC = new RTCPeerConnection({
+    iceServers: opts.iceServers,
     iceCandidatePoolSize: 10,
   });
 
-  pc.onicecandidate = (event) => {
+  pc.onicecandidate = (event: AnyPC) => {
     if (event.candidate) {
       opts.onIceCandidate(JSON.stringify(event.candidate));
     }
   };
 
-  pc.ontrack = (event) => {
-    const stream = event.streams[0];
-    if (stream) opts.onTrack(stream);
+  pc.ontrack = (event: AnyPC) => {
+    const stream = event.streams?.[0];
+    if (stream) opts.onTrack(stream as MediaStream);
   };
 
   pc.onconnectionstatechange = () => {
-    opts.onConnectionStateChange(pc.connectionState);
+    opts.onConnectionStateChange(pc.connectionState as RTCPeerConnectionState);
   };
 
   return pc;
@@ -81,16 +76,18 @@ export function createPeerConnection(opts: PeerOptions): RTCPeerConnection {
 // ── ICE candidate queue ───────────────────────────────────────────────────────
 
 export class IceCandidateQueue {
-  private queue: RTCIceCandidate[] = [];
+  private queue: AnyPC[] = [];
   private remoteDescSet = false;
-  private pc: RTCPeerConnection;
+  private pc: AnyPC;
 
-  constructor(pc: RTCPeerConnection) {
+  constructor(pc: AnyPC) {
     this.pc = pc;
   }
 
   async add(candidateJson: string): Promise<void> {
-    const candidate = new RTCIceCandidate(JSON.parse(candidateJson) as RTCIceCandidateInit);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { RTCIceCandidate } = require('./index');
+    const candidate = new RTCIceCandidate(JSON.parse(candidateJson) as object);
     if (this.remoteDescSet) {
       await this.pc.addIceCandidate(candidate);
     } else {
@@ -109,38 +106,32 @@ export class IceCandidateQueue {
 
 // ── Bitrate constraints ───────────────────────────────────────────────────────
 
-const VIDEO_MAX_BITRATE_BPS = 600_000; // ~600kbps
+const VIDEO_MAX_BITRATE_BPS = 600_000;
 
 export async function applyBitrateConstraints(
-  pc: RTCPeerConnection,
+  pc: AnyPC,
   video: boolean,
 ): Promise<void> {
   if (!pc.getSenders) return;
-  const senders = pc.getSenders();
+  const senders: AnyPC[] = pc.getSenders();
   for (const sender of senders) {
     if (!sender.track) continue;
     if (video && sender.track.kind === 'video') {
-      const params = sender.getParameters ? sender.getParameters() : {} as RTCRtpSendParameters;
+      const params = sender.getParameters ? sender.getParameters() : {};
       if (!params.encodings) params.encodings = [{}];
-      params.encodings[0]!.maxBitrate = VIDEO_MAX_BITRATE_BPS;
+      params.encodings[0].maxBitrate = VIDEO_MAX_BITRATE_BPS;
       try {
         await sender.setParameters(params);
       } catch {
-        // Not supported on all platforms — silently ignore
+        // Not supported on all platforms
       }
-    }
-    if (sender.track.kind === 'audio') {
-      // Opus DTX + FEC are typically set in the SDP offer/answer
-      // Additional constraints can be set via setParameters if supported
     }
   }
 }
 
 // ── ICE restart ───────────────────────────────────────────────────────────────
 
-export async function performIceRestart(
-  pc: RTCPeerConnection,
-): Promise<string> {
+export async function performIceRestart(pc: AnyPC): Promise<string> {
   const offer = await pc.createOffer({ iceRestart: true });
   await pc.setLocalDescription(offer);
   return JSON.stringify(offer);

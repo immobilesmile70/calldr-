@@ -19,7 +19,7 @@ describe('normalizeCode', () => {
 
   it('strips hyphens and normalizes to lowercase', () => {
     const result = normalizeCode('bcd-fghj-kmn');
-    expect(result).toBe('bcdfghjkkmn'.slice(0, 10));
+    expect(result).toBe('bcdfghjkmn');
   });
 
   it('strips vowels and returns null if length is wrong after strip', () => {
@@ -41,9 +41,9 @@ describe('normalizeCode', () => {
   });
 
   it('strips spaces', () => {
-    const withSpaces = 'bcd fghj km';
+    const withSpaces = 'bcd fghj kmn';
     const result = normalizeCode(withSpaces);
-    expect(result).toBe('bcdfghjkkm'.slice(0, 10));
+    expect(result).toBe('bcdfghjkmn');
   });
 });
 

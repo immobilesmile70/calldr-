@@ -14,6 +14,7 @@ let InCallManager: {
 } | null = null;
 
 if (Platform.OS !== 'web') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   InCallManager = require('react-native-incall-manager').default;
 }
 

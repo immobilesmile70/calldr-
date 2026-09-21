@@ -37,7 +37,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   web: {
     bundler: 'metro',
-    output: 'static',
+    output: 'single',
     favicon: './assets/favicon.png',
   },
   experiments: {
@@ -58,14 +58,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     '@config-plugins/react-native-webrtc',
     '@react-native-firebase/app',
     '@react-native-firebase/messaging',
-    [
-      '@notifee/react-native',
-      {
-        iosNotificationEntitlements: {
-          'com.apple.developer.usernotifications.time-sensitive': true,
-        },
-      },
-    ],
     [
       'expo-font',
       {

@@ -1,8 +1,6 @@
 import { Platform } from 'react-native';
 import type { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
 import { showIncomingCallNotification, dismissCallNotification } from './notifee';
-import { signInWithToken } from '@/firebase/auth';
-import { setCallState } from '@/firebase/rtdb';
 
 /**
  * Handles FCM background/killed messages.
@@ -22,10 +20,11 @@ export async function handleBackgroundFCM(
 
   switch (type) {
     case 'incoming_call': {
-      const roomId = data['roomId'];
-      const callerName = data['callerName'];
+      const roomId = typeof data['roomId'] === 'string' ? data['roomId'] : undefined;
+      const callerName = typeof data['callerName'] === 'string' ? data['callerName'] : undefined;
       const video = data['video'] === 'true';
-      const durationSec = parseInt(data['durationSec'] ?? '300', 10);
+      const durationSecStr = typeof data['durationSec'] === 'string' ? data['durationSec'] : '300';
+      const durationSec = parseInt(durationSecStr, 10);
       if (roomId && callerName) {
         await showIncomingCallNotification({
           roomId,
@@ -38,7 +37,7 @@ export async function handleBackgroundFCM(
     }
 
     case 'call_cancel': {
-      const roomId = data['roomId'];
+      const roomId = typeof data['roomId'] === 'string' ? data['roomId'] : undefined;
       if (roomId) {
         await dismissCallNotification(roomId);
       }

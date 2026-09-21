@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Animated, StyleProp, ViewStyle } from 'react-native';
+import { StyleSheet, Animated, StyleProp, ViewStyle } from 'react-native';
 import { colors, radii } from '@/theme/tokens';
 
 interface LoadingSkeletonProps {

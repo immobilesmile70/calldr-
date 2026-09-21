@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, StyleProp, ViewStyle } from 'react-native';
-import { colors, fontSize } from '@/theme/tokens';
 
 interface AvatarProps {
   name: string;

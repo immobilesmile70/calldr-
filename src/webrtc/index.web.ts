@@ -8,7 +8,6 @@ export const RTCPeerConnection = window.RTCPeerConnection;
 export const RTCSessionDescription = window.RTCSessionDescription;
 export const RTCIceCandidate = window.RTCIceCandidate;
 
-export type { MediaStream };
 export type RTCPeerConnectionConfiguration = RTCConfiguration;
 export type MediaStreamConstraints = globalThis.MediaStreamConstraints;
 

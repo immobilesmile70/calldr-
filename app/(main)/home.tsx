@@ -23,7 +23,6 @@ import { useAuth } from '@/lib/useAuth';
 import { useConnections } from '@/lib/useConnections';
 import { getIdToken } from '@/firebase/auth';
 import { colors, spacing, fontSize, radii, PILL_HEIGHT } from '@/theme/tokens';
-import { formatCode } from '@shared/code';
 import { Contact, DURATION_OPTIONS, DurationMinutes } from '@shared/types';
 
 const API_URL =

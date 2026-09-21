@@ -52,6 +52,7 @@ export function setupFcmTokenRefresh(
 ): () => void {
   if (Platform.OS === 'web') return () => {};
   // Dynamic import to avoid web bundle issues
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const messaging = require('@react-native-firebase/messaging').default;
   return messaging().onTokenRefresh((token: string) => {
     onToken(token);
@@ -63,6 +64,7 @@ export function setupFcmTokenRefresh(
 export async function getCurrentFcmToken(): Promise<string | null> {
   if (Platform.OS === 'web') return null;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const messaging = require('@react-native-firebase/messaging').default;
     const token = await messaging().getToken();
     return token as string;

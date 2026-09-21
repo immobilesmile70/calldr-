@@ -3,7 +3,6 @@ import * as admin from 'firebase-admin';
 import { z } from 'zod';
 import {
   getAdminFirestore,
-  getAdminDatabase,
   getAdminApp,
   ok,
   err,

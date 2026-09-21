@@ -1,7 +1,8 @@
-import { Platform, Linking } from 'react-native';
+import { Platform } from 'react-native';
 
 let PermissionsAndroid: typeof import('react-native').PermissionsAndroid | null = null;
 if (Platform.OS === 'android') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   PermissionsAndroid = require('react-native').PermissionsAndroid;
 }
 
@@ -23,7 +24,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
   if (!POST_NOTIFICATIONS) return true; // Not required on this Android version
 
   const current = await check(POST_NOTIFICATIONS);
-  if (current === RESULTS.GRANTED) return true;
+  if (current) return true;
 
   const result = await request(POST_NOTIFICATIONS, {
     title: 'Allow notifications',
@@ -46,6 +47,7 @@ export async function checkFullScreenIntentPermission(): Promise<void> {
 
   try {
     // Use notifee's power manager API
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const notifee = require('@notifee/react-native').default;
     const settings = await notifee.getNotificationSettings();
     if (settings.android?.alarm === 0 /* BLOCKED */) {

@@ -8,7 +8,6 @@ import {
   ok,
   err,
   parseBody,
-  getAdminApp,
 } from '../_lib/admin';
 import { generateUniqueCode } from '../../shared/code';
 

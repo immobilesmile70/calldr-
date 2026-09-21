@@ -46,7 +46,8 @@ export function useSignaling({
   onConnectionStateChange,
   onEnd,
 }: SignalingOptions) {
-  const pcRef = useRef<RTCPeerConnection | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pcRef = useRef<any>(null);
   const iceQueueRef = useRef<IceCandidateQueue | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const iceGenRef = useRef<number>(0);
@@ -105,7 +106,8 @@ export function useSignaling({
     // Add local tracks
     if (localStream) {
       for (const track of localStream.getTracks()) {
-        pc.addTrack(track, localStream);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        pc.addTrack(track as any, localStream as any);
       }
     }
 
@@ -195,7 +197,8 @@ export function useSignaling({
   const muteAudio = useCallback((muted: boolean) => {
     const pc = pcRef.current;
     if (!pc) return;
-    pc.getSenders().forEach((s) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    pc.getSenders().forEach((s: any) => {
       if (s.track?.kind === 'audio') s.track.enabled = !muted;
     });
   }, []);
@@ -203,7 +206,8 @@ export function useSignaling({
   const muteVideo = useCallback((muted: boolean) => {
     const pc = pcRef.current;
     if (!pc) return;
-    pc.getSenders().forEach((s) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    pc.getSenders().forEach((s: any) => {
       if (s.track?.kind === 'video') s.track.enabled = !muted;
     });
   }, []);

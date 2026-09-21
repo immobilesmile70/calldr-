@@ -57,8 +57,10 @@ export interface CallRoom {
   offer?: string; // JSON-serialized RTCSessionDescription
   answer?: string;
   iceGen?: number; // incremented on ICE restart
-  // ice/caller/{push}: ICE candidate JSON strings
-  // ice/callee/{push}: ICE candidate JSON strings
+  ice?: {
+    caller?: Record<string, string>;
+    callee?: Record<string, string>;
+  };
   media?: Record<string, { mic: boolean; cam: boolean }>;
 }
 

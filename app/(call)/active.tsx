@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useState } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,6 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Platform,
-  Dimensions,
-  PanResponder,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,15 +25,15 @@ import { colors, spacing, fontSize, radii } from '@/theme/tokens';
 // Platform-aware VideoRenderer
 let VideoRenderer: React.ComponentType<{ streamURL?: string; objectFit?: string; style?: object }> | null = null;
 if (Platform.OS !== 'web') {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   VideoRenderer = require('react-native-webrtc').RTCView;
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const LOCAL_PREVIEW_SIZE = 100;
 
 export default function ActiveCallScreen() {
   const { user } = useAuth();
-  const { roomId, role, contactName, video, durationSec } = useLocalSearchParams<{
+  const { roomId, contactName, video, durationSec } = useLocalSearchParams<{
     roomId: string;
     role: 'caller' | 'callee';
     contactName: string;
@@ -56,7 +54,7 @@ export default function ActiveCallScreen() {
     router.replace('/(main)/home');
   }, [endCall]);
 
-  const timer = useCallTimer(
+  useCallTimer(
     room?.answeredAt,
     durationSecNum,
     serverOffset,
@@ -128,7 +126,6 @@ export default function ActiveCallScreen() {
       {/* Remote video / avatar background */}
       {isVideo && media.remoteStream && VideoRenderer ? (
         <VideoRenderer
-          // @ts-expect-error RTCView uses streamURL
           streamURL={(media.remoteStream as { toURL?: () => string }).toURL?.() ?? ''}
           objectFit="cover"
           style={StyleSheet.absoluteFillObject}
@@ -167,7 +164,6 @@ export default function ActiveCallScreen() {
         {isVideo && media.localStream && VideoRenderer && (
           <View style={styles.localPreview}>
             <VideoRenderer
-              // @ts-expect-error RTCView uses streamURL
               streamURL={(media.localStream as { toURL?: () => string }).toURL?.() ?? ''}
               objectFit="cover"
               style={styles.localPreviewInner}

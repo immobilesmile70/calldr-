@@ -1,0 +1,36 @@
+node_modules/
+.expo/
+dist/
+android/
+ios/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+
+# Environment secrets — NEVER commit
+.env
+.env.local
+.env.production
+
+# EAS
+.eas/
+
+# Google services (downloaded from Firebase console)
+google-services.json
+GoogleService-Info.plist
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# Local history
+.history

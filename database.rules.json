@@ -1,0 +1,65 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "calls": {
+      "$roomId": {
+        ".read": "auth != null && (data.child('callerUid').val() === auth.uid || data.child('calleeUid').val() === auth.uid)",
+        ".write": "auth != null && (data.child('callerUid').val() === auth.uid || data.child('calleeUid').val() === auth.uid)",
+
+        "state": {
+          ".validate": "newData.isString() && newData.val().matches(/^(ringing|active|ended|declined|cancelled|missed|busy)$/)"
+        },
+        "offer": {
+          ".validate": "newData.isString()"
+        },
+        "answer": {
+          ".validate": "newData.isString()"
+        },
+        "iceGen": {
+          ".validate": "newData.isNumber()"
+        },
+        "answeredAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "endedAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "endedBy": {
+          ".validate": "newData.isString()"
+        },
+        "ice": {
+          "caller": {
+            "$candidateId": {
+              ".validate": "newData.isString()"
+            }
+          },
+          "callee": {
+            "$candidateId": {
+              ".validate": "newData.isString()"
+            }
+          }
+        },
+        "media": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid",
+            "mic": { ".validate": "newData.isBoolean()" },
+            "cam": { ".validate": "newData.isBoolean()" }
+          }
+        }
+      }
+    },
+
+    "incoming": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && (!newData.exists())"
+      }
+    },
+
+    ".info": {
+      ".read": true
+    }
+  }
+}

@@ -10,7 +10,7 @@
         "gradleCommand": ":app:assembleDebug"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://your-project.vercel.app"
+        "EXPO_PUBLIC_API_URL": "https://calldr.vercel.app"
       }
     },
     "preview": {

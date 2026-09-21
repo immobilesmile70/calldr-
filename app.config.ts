@@ -18,7 +18,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: '#0E0E11',
     },
     package: 'com.calldr.app',
-    googleServicesFile: './google-services.json',
+    googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
     permissions: [
       'android.permission.INTERNET',
       'android.permission.ACCESS_NETWORK_STATE',
@@ -67,6 +67,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ],
   extra: {
     router: { origin: false },
-    eas: { projectId: 'YOUR_EAS_PROJECT_ID' },
+    eas: {
+        projectId: "e666a19a-3cca-486f-9ccf-a36582997663"
+      }
   },
+  owner: "beastdora",
 });

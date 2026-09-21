@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "81815584283",
+    "firebase_url": "https://calldr-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "calldr",
+    "storage_bucket": "calldr.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:81815584283:android:a8a548982d053e24c102be",
+        "android_client_info": {
+          "package_name": "com.calldr.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "81815584283-ctb5mvcvdtufstfbo08a7aiv5d792nme.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCRo04A2e91w6s9L9SKSRCNvFU7jgoDdKw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "81815584283-ctb5mvcvdtufstfbo08a7aiv5d792nme.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

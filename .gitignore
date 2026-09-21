@@ -15,12 +15,13 @@ web-build/
 .env
 .env.local
 .env.production
+*-adminsdk-*.json
+*service-account*.json
 
 # EAS
 .eas/
 
-# Google services (downloaded from Firebase console)
-google-services.json
+# Google services
 GoogleService-Info.plist
 
 # Debug

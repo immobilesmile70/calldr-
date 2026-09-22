@@ -47,11 +47,20 @@ export function VideoRendererWeb({
 
     playVideo();
 
+    const handleTrackAdded = (e: any) => {
+      console.log('[WebRTC VideoWeb] Track added to stream:', e.track?.kind);
+      if (e.track?.kind === 'video') {
+        el.srcObject = null;
+        el.srcObject = stream;
+      }
+      playVideo();
+    };
+
     if (typeof stream.addEventListener === 'function') {
-      stream.addEventListener('addtrack', playVideo);
+      stream.addEventListener('addtrack', handleTrackAdded);
       stream.addEventListener('removetrack', playVideo);
       return () => {
-        stream.removeEventListener('addtrack', playVideo);
+        stream.removeEventListener('addtrack', handleTrackAdded);
         stream.removeEventListener('removetrack', playVideo);
       };
     }

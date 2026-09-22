@@ -37,38 +37,57 @@ if (Platform.OS !== 'web') {
 
 function RemoteAudioWeb({ stream }: { stream: MediaStream | null }) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const [audioBlocked, setAudioBlocked] = React.useState(false);
 
   React.useEffect(() => {
     const el = audioRef.current;
     if (!el || !stream) return;
 
+    el.muted = false;
+    el.volume = 1.0;
+
     const playAudio = () => {
       if (el.srcObject !== stream) {
         el.srcObject = stream;
       }
-      el.play().catch((err) => {
-        console.warn('[WebRTC AudioWeb] Autoplay blocked, waiting for user gesture:', err);
-        const unlock = () => {
-          el.play().catch(() => {});
-          window.removeEventListener('click', unlock);
-          window.removeEventListener('touchstart', unlock);
-          window.removeEventListener('pointerdown', unlock);
-          window.removeEventListener('keydown', unlock);
-        };
-        window.addEventListener('click', unlock, { once: true });
-        window.addEventListener('touchstart', unlock, { once: true });
-        window.addEventListener('pointerdown', unlock, { once: true });
-        window.addEventListener('keydown', unlock, { once: true });
-      });
+      el.play()
+        .then(() => {
+          setAudioBlocked(false);
+        })
+        .catch((err) => {
+          console.warn('[WebRTC AudioWeb] Autoplay blocked, waiting for user gesture:', err);
+          setAudioBlocked(true);
+          const unlock = () => {
+            el.play()
+              .then(() => setAudioBlocked(false))
+              .catch(() => {});
+            window.removeEventListener('click', unlock);
+            window.removeEventListener('touchstart', unlock);
+            window.removeEventListener('pointerdown', unlock);
+            window.removeEventListener('keydown', unlock);
+          };
+          window.addEventListener('click', unlock, { once: true });
+          window.addEventListener('touchstart', unlock, { once: true });
+          window.addEventListener('pointerdown', unlock, { once: true });
+          window.addEventListener('keydown', unlock, { once: true });
+        });
     };
 
     playAudio();
 
+    const handleTrackAdded = (e: any) => {
+      if (e.track?.kind === 'audio') {
+        el.srcObject = null;
+        el.srcObject = stream;
+      }
+      playAudio();
+    };
+
     if (typeof stream.addEventListener === 'function') {
-      stream.addEventListener('addtrack', playAudio);
+      stream.addEventListener('addtrack', handleTrackAdded);
       stream.addEventListener('removetrack', playAudio);
       return () => {
-        stream.removeEventListener('addtrack', playAudio);
+        stream.removeEventListener('addtrack', handleTrackAdded);
         stream.removeEventListener('removetrack', playAudio);
       };
     }
@@ -77,7 +96,36 @@ function RemoteAudioWeb({ stream }: { stream: MediaStream | null }) {
   if (Platform.OS !== 'web') return null;
 
   return (
-    <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }} />
+    <>
+      <audio
+        ref={audioRef}
+        autoPlay
+        playsInline
+        style={{
+          position: 'fixed',
+          top: -10000,
+          left: -10000,
+          width: 1,
+          height: 1,
+          opacity: 0.001,
+          pointerEvents: 'none',
+        }}
+      />
+      {audioBlocked && (
+        <TouchableOpacity
+          style={styles.unmutePill}
+          onPress={() => {
+            if (audioRef.current) {
+              audioRef.current.play().then(() => setAudioBlocked(false)).catch(() => {});
+            }
+          }}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="volume-high" size={16} color="#FFFFFF" />
+          <Text style={styles.unmuteText}>Tap anywhere to enable audio</Text>
+        </TouchableOpacity>
+      )}
+    </>
   );
 }
 
@@ -93,12 +141,13 @@ export default function ActiveCallScreen() {
     durationSec: string;
   }>();
 
-  const isVideo = video === 'true';
+  const isVideo = video === 'true' || false;
   const durationSecNum = parseInt(durationSec ?? '300', 10);
 
   // Hooks
   const { room, serverOffset, endCall } = useCallRoom(roomId ?? null, user?.uid ?? null);
-  const media = useMedia(isVideo, roomId ?? null, user?.uid ?? null);
+  const resolvedIsVideo = isVideo || room?.video === true;
+  const media = useMedia(resolvedIsVideo, roomId ?? null, user?.uid ?? null);
   const releaseMediaRef = React.useRef(media.releaseMedia);
   releaseMediaRef.current = media.releaseMedia;
 
@@ -131,6 +180,7 @@ export default function ActiveCallScreen() {
     room,
     role,
     myUid: user?.uid ?? '',
+    isVideo: resolvedIsVideo,
     localStream: media.localStream,
     onRemoteStream: media.setRemote,
     onConnectionStateChange: (_state) => {},
@@ -200,8 +250,9 @@ export default function ActiveCallScreen() {
     <View style={styles.fullscreen}>
       <RemoteAudioWeb stream={media.remoteStream} />
       {/* Remote video / avatar background */}
-      {isVideo && media.remoteStream && VideoRenderer ? (
+      {resolvedIsVideo && media.remoteStream && VideoRenderer ? (
         <VideoRenderer
+          key={`remote_${media.remoteStream.id}_${media.remoteStream.getVideoTracks?.()?.length ?? 0}`}
           streamURL={(media.remoteStream as { toURL?: () => string }).toURL?.() ?? ''}
           stream={media.remoteStream}
           objectFit="cover"
@@ -234,12 +285,12 @@ export default function ActiveCallScreen() {
         </View>
 
         {/* Contact name (audio mode only — video shows avatar large) */}
-        {!isVideo && (
+        {!resolvedIsVideo && (
           <Text style={styles.contactNameText}>{contactName}</Text>
         )}
 
         {/* Local preview (video only) — draggable placeholder */}
-        {isVideo && media.localStream && VideoRenderer && (
+        {resolvedIsVideo && media.localStream && VideoRenderer && (
           <View style={styles.localPreview}>
             <VideoRenderer
               streamURL={(media.localStream as { toURL?: () => string }).toURL?.() ?? ''}
@@ -278,7 +329,7 @@ export default function ActiveCallScreen() {
             />
           </TouchableOpacity>
 
-          {isVideo && (
+          {resolvedIsVideo && (
             <>
               <TouchableOpacity
                 style={styles.controlBtn}
@@ -384,5 +435,27 @@ const styles = StyleSheet.create({
   endBtn: {
     backgroundColor: colors.danger,
     width: 72,
+  },
+  unmutePill: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    zIndex: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.pill,
+    backgroundColor: colors.accent,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  unmuteText: {
+    color: '#FFFFFF',
+    fontSize: fontSize.sm,
+    fontWeight: '600',
   },
 });

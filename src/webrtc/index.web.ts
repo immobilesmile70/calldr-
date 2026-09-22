@@ -39,11 +39,11 @@ export async function getLocalStream(video: boolean): Promise<MediaStream> {
   try {
     return await navigator.mediaDevices.getUserMedia(constraints);
   } catch (err) {
-    if (video) {
-      console.warn('[WebRTC Web] Ideal video constraints failed, retrying with basic { audio: true, video: true }:', err);
-      return await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    }
-    throw err;
+    console.warn('[WebRTC Web] Ideal constraints failed, retrying with basic constraints:', err);
+    return await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: video ? true : false,
+    });
   }
 }
 

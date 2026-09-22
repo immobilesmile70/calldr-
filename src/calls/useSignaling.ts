@@ -24,6 +24,7 @@ export interface SignalingOptions {
   room: CallRoom | null;
   role?: 'caller' | 'callee';
   myUid: string;
+  isVideo?: boolean;
   localStream: MediaStream | null;
   onRemoteStream: (stream: MediaStream) => void;
   onConnectionStateChange: (state: RTCPeerConnectionState) => void;
@@ -43,6 +44,7 @@ export function useSignaling({
   room,
   role,
   myUid,
+  isVideo,
   localStream,
   onRemoteStream,
   onConnectionStateChange,
@@ -70,6 +72,58 @@ export function useSignaling({
   const isProcessingOfferRef = useRef(false);
   const isProcessingAnswerRef = useRef(false);
   const processedIceKeysRef = useRef<Set<string>>(new Set());
+
+  const addTracksToPc = useCallback((targetPc: any, stream: MediaStream | null) => {
+    if (!targetPc || !stream) return;
+    try {
+      const transceivers = typeof targetPc.getTransceivers === 'function' ? targetPc.getTransceivers() : [];
+      const senders = typeof targetPc.getSenders === 'function' ? targetPc.getSenders() : [];
+
+      for (const track of stream.getTracks()) {
+        const existingSenderWithTrack = senders.find((s: any) => s.track === track);
+        if (existingSenderWithTrack) {
+          continue;
+        }
+
+        const existingSenderSameKind = senders.find(
+          (s: any) => s.track && s.track.kind === track.kind
+        );
+        if (existingSenderSameKind && typeof existingSenderSameKind.replaceTrack === 'function') {
+          existingSenderSameKind.replaceTrack(track).catch?.(() => {});
+          continue;
+        }
+
+        const matchedTransceiver = transceivers.find((t: any) => {
+          return (
+            (t.receiver && t.receiver.track?.kind === track.kind) ||
+            (t.sender && t.sender.track?.kind === track.kind)
+          );
+        });
+
+        if (matchedTransceiver && matchedTransceiver.sender) {
+          let added = false;
+          if (typeof targetPc.addTrack === 'function' && !matchedTransceiver.sender.track) {
+            try {
+              targetPc.addTrack(track as any, stream as any);
+              added = true;
+            } catch {
+              // fallback
+            }
+          }
+          if (!added && typeof matchedTransceiver.sender.replaceTrack === 'function') {
+            matchedTransceiver.sender.replaceTrack(track).catch?.(() => {});
+          }
+          if (matchedTransceiver.direction === 'recvonly') {
+            matchedTransceiver.direction = 'sendrecv';
+          }
+        } else if (typeof targetPc.addTrack === 'function') {
+          targetPc.addTrack(track as any, stream as any);
+        }
+      }
+    } catch (err) {
+      console.warn('[WebRTC] addTracksToPc error:', err);
+    }
+  }, []);
 
   const initPeer = useCallback(async () => {
     if (!roomId) return;
@@ -127,47 +181,6 @@ export function useSignaling({
     pcRef.current = pc;
     iceQueueRef.current = new IceCandidateQueue(pc);
 
-    const addTracksToPc = (targetPc: any, stream: MediaStream | null) => {
-      if (!targetPc || !stream) return;
-      try {
-        const transceivers = typeof targetPc.getTransceivers === 'function' ? targetPc.getTransceivers() : [];
-        const senders = typeof targetPc.getSenders === 'function' ? targetPc.getSenders() : [];
-
-        for (const track of stream.getTracks()) {
-          const matchedTransceiver = transceivers.find((t: any) => {
-            return (
-              (t.sender && t.sender.track?.kind === track.kind) ||
-              (t.receiver && t.receiver.track?.kind === track.kind)
-            );
-          });
-
-          if (matchedTransceiver && matchedTransceiver.sender) {
-            if (matchedTransceiver.sender.track !== track) {
-              if (typeof matchedTransceiver.sender.replaceTrack === 'function') {
-                matchedTransceiver.sender.replaceTrack(track).catch?.(() => {});
-              }
-            }
-            if (matchedTransceiver.direction === 'recvonly') {
-              matchedTransceiver.direction = 'sendrecv';
-            }
-          } else {
-            const existingSender = senders.find(
-              (s: any) => s.track?.id === track.id || (s.track && s.track.kind === track.kind)
-            );
-            if (existingSender) {
-              if (existingSender.track !== track && typeof existingSender.replaceTrack === 'function') {
-                existingSender.replaceTrack(track).catch?.(() => {});
-              }
-            } else if (typeof targetPc.addTrack === 'function') {
-              targetPc.addTrack(track as any, stream as any);
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('[WebRTC] addTracksToPc error:', err);
-      }
-    };
-
     const waitForLocalStream = async (timeoutMs = 10000): Promise<MediaStream | null> => {
       if (localStreamRef.current) return localStreamRef.current;
       const start = Date.now();
@@ -178,7 +191,7 @@ export function useSignaling({
       return localStreamRef.current;
     };
 
-    const isVideo = room?.video ?? false;
+    const isVideoCall = isVideo !== undefined ? isVideo : (room?.video ?? false);
 
     if (isCaller) {
       // Caller waits for localStream so offer contains audio/video tracks
@@ -190,7 +203,7 @@ export function useSignaling({
 
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
-        offerToReceiveVideo: isVideo,
+        offerToReceiveVideo: isVideoCall,
       });
       await pc.setLocalDescription(offer);
       await writeOffer(roomId, JSON.stringify(offer));
@@ -322,46 +335,14 @@ export function useSignaling({
     });
 
     return unwatch;
-  }, [roomId, isCaller]);
+  }, [roomId, isCaller, isVideo, addTracksToPc]);
 
   // Sync local tracks into peer connection whenever localStream changes
   useEffect(() => {
     const pc = pcRef.current;
     if (!pc || !localStream) return;
-    try {
-      const transceivers = typeof pc.getTransceivers === 'function' ? pc.getTransceivers() : [];
-      const senders = typeof pc.getSenders === 'function' ? pc.getSenders() : [];
-
-      for (const track of localStream.getTracks()) {
-        const matched = transceivers.find((t: any) => {
-          return (
-            (t.sender && t.sender.track?.kind === track.kind) ||
-            (t.receiver && t.receiver.track?.kind === track.kind)
-          );
-        });
-
-        if (matched && matched.sender) {
-          if (matched.sender.track !== track && typeof matched.sender.replaceTrack === 'function') {
-            matched.sender.replaceTrack(track).catch?.(() => {});
-          }
-          if (matched.direction === 'recvonly') {
-            matched.direction = 'sendrecv';
-          }
-        } else {
-          const existing = senders.find(
-            (s: any) => s.track?.id === track.id || (s.track && s.track.kind === track.kind)
-          );
-          if (existing && typeof existing.replaceTrack === 'function') {
-            existing.replaceTrack(track).catch?.(() => {});
-          } else if (typeof pc.addTrack === 'function') {
-            pc.addTrack(track as any, localStream as any);
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, [localStream]);
+    addTracksToPc(pc, localStream);
+  }, [localStream, addTracksToPc]);
 
   useEffect(() => {
     isClosingRef.current = false;

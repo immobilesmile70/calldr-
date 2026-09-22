@@ -41,7 +41,7 @@ export function useMedia(
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [micMuted, setMicMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
-  const [speakerOn, setSpeakerOn] = useState(video); // speaker on for video, earpiece for audio
+  const [speakerOn, setSpeakerOn] = useState(true); // default speakerphone on so call audio is audible without proximity sensor
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [ready, setReady] = useState(false);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -70,7 +70,8 @@ export function useMedia(
 
         // Start in-call manager
         InCallManager?.start({ media: video ? 'video' : 'audio' });
-        InCallManager?.setSpeakerphoneOn(video);
+        InCallManager?.setSpeakerphoneOn(true);
+        InCallManager?.setForceSpeakerphoneOn(true);
       } catch (err) {
         console.error('[Media] getUserMedia failed', err);
         setPermissionDenied(true);
@@ -150,6 +151,7 @@ export function useMedia(
   const toggleSpeaker = useCallback(() => {
     const newSpeaker = !speakerOn;
     InCallManager?.setForceSpeakerphoneOn(newSpeaker);
+    InCallManager?.setSpeakerphoneOn(newSpeaker);
     setSpeakerOn(newSpeaker);
   }, [speakerOn]);
 

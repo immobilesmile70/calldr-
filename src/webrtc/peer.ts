@@ -18,19 +18,27 @@ export interface IceServer {
 }
 
 export async function fetchIceServers(idToken: string): Promise<IceServer[]> {
-  const resp = await fetch(`${API_URL}/calls/ice`, {
-    headers: { Authorization: `Bearer ${idToken}` },
-  });
-  if (!resp.ok) {
-    console.warn('[WebRTC] Failed to fetch ICE servers, falling back to Google STUN');
-    return [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-    ];
+  const fallbackServers: IceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+  ];
+  try {
+    const resp = await fetch(`${API_URL}/calls/ice`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (!resp.ok) {
+      console.warn('[WebRTC] Failed to fetch ICE servers, falling back to Google STUN');
+      return fallbackServers;
+    }
+    const data = (await resp.json()) as { data?: { iceServers?: IceServer[] } };
+    return data?.data?.iceServers && data.data.iceServers.length > 0
+      ? data.data.iceServers
+      : fallbackServers;
+  } catch (err) {
+    console.warn('[WebRTC] Error fetching ICE servers, falling back to Google STUN:', err);
+    return fallbackServers;
   }
-  const data = await resp.json() as { data: { iceServers: IceServer[] } };
-  return data.data.iceServers;
 }
 
 // ── Peer connection factory ───────────────────────────────────────────────────
@@ -62,9 +70,16 @@ export function createPeerConnection(opts: PeerOptions): AnyPC {
   let remoteStream: any = null;
 
   pc.onicecandidate = (event: AnyPC) => {
-    if (event.candidate) {
-      console.log('[WebRTC] Local ICE candidate gathered:', event.candidate.candidate?.slice(0, 40));
-      opts.onIceCandidate(JSON.stringify(event.candidate));
+    if (event.candidate && event.candidate.candidate) {
+      const c = event.candidate;
+      const candidateInit = {
+        candidate: c.candidate,
+        sdpMid: c.sdpMid !== null && c.sdpMid !== undefined ? String(c.sdpMid) : '0',
+        sdpMLineIndex: c.sdpMLineIndex !== null && c.sdpMLineIndex !== undefined ? Number(c.sdpMLineIndex) : 0,
+        usernameFragment: c.usernameFragment || undefined,
+      };
+      console.log('[WebRTC] Local ICE candidate gathered:', candidateInit.candidate?.slice(0, 40));
+      opts.onIceCandidate(JSON.stringify(candidateInit));
     }
   };
 
@@ -89,10 +104,28 @@ export function createPeerConnection(opts: PeerOptions): AnyPC {
     }
   };
 
+  pc.oniceconnectionstatechange = () => {
+    const iceState = pc.iceConnectionState;
+    console.log('[WebRTC] ICE connection state changed:', iceState);
+    if (iceState === 'connected' || iceState === 'completed') {
+      opts.onConnectionStateChange('connected');
+    } else if (iceState === 'failed') {
+      opts.onConnectionStateChange('failed');
+    } else if (iceState === 'disconnected') {
+      opts.onConnectionStateChange('disconnected');
+    }
+  };
+
+  pc.onsignalingstatechange = () => {
+    console.log('[WebRTC] Signaling state changed:', pc.signalingState);
+  };
+
   pc.onconnectionstatechange = () => {
     const state = pc.connectionState as RTCPeerConnectionState;
     console.log('[WebRTC] Connection state changed:', state);
-    opts.onConnectionStateChange(state);
+    if (state) {
+      opts.onConnectionStateChange(state);
+    }
   };
 
   return pc;
@@ -113,13 +146,29 @@ export class IceCandidateQueue {
     try {
       if (!candidateJson) return;
       const parsed = typeof candidateJson === 'string' ? JSON.parse(candidateJson) : candidateJson;
-      if (!parsed || (!parsed.candidate && parsed.candidate !== '')) return;
+      if (!parsed || !parsed.candidate) return;
+
+      const candInit: any = {
+        candidate: parsed.candidate,
+        sdpMid: parsed.sdpMid !== null && parsed.sdpMid !== undefined ? String(parsed.sdpMid) : '0',
+        sdpMLineIndex: parsed.sdpMLineIndex !== null && parsed.sdpMLineIndex !== undefined ? Number(parsed.sdpMLineIndex) : 0,
+      };
+      if (parsed.usernameFragment) {
+        candInit.usernameFragment = parsed.usernameFragment;
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { RTCIceCandidate } = require('./index');
-      const candidate = new RTCIceCandidate(parsed);
+      let candidate: any = candInit;
+      if (typeof RTCIceCandidate === 'function') {
+        try {
+          candidate = new RTCIceCandidate(candInit);
+        } catch {
+          candidate = candInit;
+        }
+      }
 
-      if (this.remoteDescSet) {
+      if (this.remoteDescSet && this.pc.remoteDescription) {
         await this.pc.addIceCandidate(candidate).catch((err: any) => {
           console.warn('[WebRTC] addIceCandidate error:', err?.message || err);
         });
@@ -133,15 +182,20 @@ export class IceCandidateQueue {
 
   async flush(): Promise<void> {
     this.remoteDescSet = true;
+    if (!this.pc.remoteDescription) {
+      console.warn('[WebRTC] flush called but pc.remoteDescription is not set yet, preserving buffer');
+      return;
+    }
     console.log(`[WebRTC] Flushing ${this.queue.length} queued ICE candidates`);
-    for (const candidate of this.queue) {
+    const toFlush = [...this.queue];
+    this.queue = [];
+    for (const candidate of toFlush) {
       try {
         await this.pc.addIceCandidate(candidate);
       } catch (err: any) {
         console.warn('[WebRTC] addIceCandidate error in flush:', err?.message || err);
       }
     }
-    this.queue = [];
   }
 }
 

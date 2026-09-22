@@ -40,18 +40,37 @@ function RemoteAudioWeb({ stream }: { stream: MediaStream | null }) {
 
   React.useEffect(() => {
     const el = audioRef.current;
-    if (el && stream) {
-      el.srcObject = stream;
+    if (!el || !stream) return;
+
+    const playAudio = () => {
+      if (el.srcObject !== stream) {
+        el.srcObject = stream;
+      }
       el.play().catch((err) => {
-        console.warn('[WebRTC AudioWeb] Autoplay blocked, waiting for user click:', err);
+        console.warn('[WebRTC AudioWeb] Autoplay blocked, waiting for user gesture:', err);
         const unlock = () => {
           el.play().catch(() => {});
           window.removeEventListener('click', unlock);
           window.removeEventListener('touchstart', unlock);
+          window.removeEventListener('pointerdown', unlock);
+          window.removeEventListener('keydown', unlock);
         };
         window.addEventListener('click', unlock, { once: true });
         window.addEventListener('touchstart', unlock, { once: true });
+        window.addEventListener('pointerdown', unlock, { once: true });
+        window.addEventListener('keydown', unlock, { once: true });
       });
+    };
+
+    playAudio();
+
+    if (typeof stream.addEventListener === 'function') {
+      stream.addEventListener('addtrack', playAudio);
+      stream.addEventListener('removetrack', playAudio);
+      return () => {
+        stream.removeEventListener('addtrack', playAudio);
+        stream.removeEventListener('removetrack', playAudio);
+      };
     }
   }, [stream]);
 

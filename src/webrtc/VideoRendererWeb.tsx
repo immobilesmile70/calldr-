@@ -19,11 +19,38 @@ export function VideoRendererWeb({
 
   useEffect(() => {
     const el = videoRef.current;
-    if (el && stream) {
+    if (!el || !stream) return;
+
+    el.muted = true; // explicitly set property to satisfy browser autoplay policy
+    if (el.srcObject !== stream) {
       el.srcObject = stream;
+    }
+
+    const playVideo = () => {
+      if (el.srcObject !== stream) {
+        el.srcObject = stream;
+      }
       el.play().catch((err) => {
-        console.warn('[WebRTC VideoWeb] Auto-play failed, retrying on user interaction:', err);
+        console.warn('[WebRTC VideoWeb] Auto-play blocked, waiting for user gesture:', err);
+        const unlock = () => {
+          el.play().catch(() => {});
+          window.removeEventListener('click', unlock);
+          window.removeEventListener('touchstart', unlock);
+        };
+        window.addEventListener('click', unlock, { once: true });
+        window.addEventListener('touchstart', unlock, { once: true });
       });
+    };
+
+    playVideo();
+
+    if (typeof stream.addEventListener === 'function') {
+      stream.addEventListener('addtrack', playVideo);
+      stream.addEventListener('removetrack', playVideo);
+      return () => {
+        stream.removeEventListener('addtrack', playVideo);
+        stream.removeEventListener('removetrack', playVideo);
+      };
     }
   }, [stream]);
 

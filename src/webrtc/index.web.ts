@@ -22,7 +22,11 @@ export interface MediaConstraints {
 
 export async function getLocalStream(video: boolean): Promise<MediaStream> {
   const constraints: MediaStreamConstraints = {
-    audio: true,
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
     video: video
       ? {
           width: { ideal: 640 },
@@ -32,7 +36,15 @@ export async function getLocalStream(video: boolean): Promise<MediaStream> {
         }
       : false,
   };
-  return navigator.mediaDevices.getUserMedia(constraints);
+  try {
+    return await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (err) {
+    if (video) {
+      console.warn('[WebRTC Web] Ideal video constraints failed, retrying with basic { audio: true, video: true }:', err);
+      return await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    }
+    throw err;
+  }
 }
 
 /** Flip camera not natively available on web */

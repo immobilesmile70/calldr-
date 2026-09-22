@@ -158,8 +158,17 @@ export function useMedia(
     if (stream) flipCamera(stream).catch(() => {});
   }, []);
 
+  const [, setTrackVer] = useState(0);
+
   const setRemote = useCallback((stream: MediaStream) => {
     setRemoteStream(stream);
+    if (stream && typeof (stream as any).addEventListener === 'function') {
+      const handleTrackChange = () => {
+        setTrackVer((v) => v + 1);
+      };
+      (stream as any).addEventListener('addtrack', handleTrackChange);
+      (stream as any).addEventListener('removetrack', handleTrackChange);
+    }
   }, []);
 
   const releaseMedia = useCallback(() => {

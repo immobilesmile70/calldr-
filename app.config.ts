@@ -10,6 +10,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: 'automatic',
   scheme: 'calldr',
   splash: {
+    image: './assets/icon.png',
+    resizeMode: 'contain',
     backgroundColor: '#0E0E11',
   },
   android: {
@@ -46,12 +48,20 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     'expo-router',
     [
+      'expo-splash-screen',
+      {
+        image: './assets/icon.png',
+        resizeMode: 'contain',
+        backgroundColor: '#0E0E11',
+      },
+    ],
+    [
       'expo-build-properties',
       {
         android: {
           minSdkVersion: 24,
           targetSdkVersion: 34,
-          compileSdkVersion: 34,
+          compileSdkVersion: 35,
         },
       },
     ],

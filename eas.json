@@ -17,11 +17,33 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCRo04A2e91w6s9L9SKSRCNvFU7jgoDdKw",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "calldr.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "calldr",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "calldr.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "81815584283",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:81815584283:android:a8a548982d053e24c102be",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-0R40K0X5KH",
+        "EXPO_PUBLIC_FIREBASE_DATABASE_URL": "https://calldr-default-rtdb.asia-southeast1.firebasedatabase.app",
+        "EXPO_PUBLIC_API_URL": "https://calldr.vercel.app"
       }
     },
     "production": {
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyCRo04A2e91w6s9L9SKSRCNvFU7jgoDdKw",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "calldr.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "calldr",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "calldr.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "81815584283",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:81815584283:android:a8a548982d053e24c102be",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-0R40K0X5KH",
+        "EXPO_PUBLIC_FIREBASE_DATABASE_URL": "https://calldr-default-rtdb.asia-southeast1.firebasedatabase.app",
+        "EXPO_PUBLIC_API_URL": "https://calldr.vercel.app"
       }
     }
   },

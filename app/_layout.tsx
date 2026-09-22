@@ -8,7 +8,7 @@ import { AuthContext, useAuthProvider } from '@/lib/useAuth';
 import { watchIncoming } from '@/firebase/rtdb';
 import { router } from 'expo-router';
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 /**
  * Root layout:

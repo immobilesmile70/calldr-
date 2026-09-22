@@ -51,13 +51,21 @@ export function setupFcmTokenRefresh(
   onToken: (token: string) => void,
 ): () => void {
   if (Platform.OS === 'web') return () => {};
-  // Dynamic import to avoid web bundle issues
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const messaging = require('@react-native-firebase/messaging').default;
-  return messaging().onTokenRefresh((token: string) => {
-    onToken(token);
-    registerFcmToken(token).catch(() => {});
-  });
+  try {
+    // Dynamic import to avoid web bundle issues
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const messagingModule = require('@react-native-firebase/messaging');
+    const messaging = messagingModule?.default || messagingModule;
+    if (typeof messaging === 'function') {
+      return messaging().onTokenRefresh((token: string) => {
+        onToken(token);
+        registerFcmToken(token).catch(() => {});
+      });
+    }
+  } catch (err) {
+    console.warn('[FCM] setupFcmTokenRefresh failed:', err);
+  }
+  return () => {};
 }
 
 /** Get current FCM token */
@@ -65,9 +73,13 @@ export async function getCurrentFcmToken(): Promise<string | null> {
   if (Platform.OS === 'web') return null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const messaging = require('@react-native-firebase/messaging').default;
-    const token = await messaging().getToken();
-    return token as string;
+    const messagingModule = require('@react-native-firebase/messaging');
+    const messaging = messagingModule?.default || messagingModule;
+    if (typeof messaging === 'function') {
+      const token = await messaging().getToken();
+      return token as string;
+    }
+    return null;
   } catch (err) {
     console.warn('[FCM] getToken failed', err);
     return null;

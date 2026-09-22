@@ -11,18 +11,30 @@ import { AppRegistry, Platform } from 'react-native';
 // ── FCM background handler ──────────────────────────────────────────────────
 // Only register on native — the Firebase JS SDK handles web differently.
 if (Platform.OS !== 'web') {
-  // Dynamic import avoids crashing the web bundle which doesn't have
-  // @react-native-firebase/messaging.
-  const { default: messaging } = require('@react-native-firebase/messaging');
-  const { handleBackgroundFCM } = require('./src/notifications/fcm');
-  messaging().setBackgroundMessageHandler(handleBackgroundFCM);
+  try {
+    const messagingModule = require('@react-native-firebase/messaging');
+    const messaging = messagingModule?.default || messagingModule;
+    if (typeof messaging === 'function') {
+      const { handleBackgroundFCM } = require('./src/notifications/fcm');
+      messaging().setBackgroundMessageHandler(handleBackgroundFCM);
+    }
+  } catch (err) {
+    console.warn('[FCM] Failed to set background message handler:', err);
+  }
 }
 
 // ── Notifee background event handler ───────────────────────────────────────
 if (Platform.OS !== 'web') {
-  const notifee = require('@notifee/react-native').default;
-  const { handleNotifeeBackgroundEvent } = require('./src/notifications/notifee');
-  notifee.onBackgroundEvent(handleNotifeeBackgroundEvent);
+  try {
+    const notifeeModule = require('@notifee/react-native');
+    const notifee = notifeeModule?.default || notifeeModule;
+    if (notifee && typeof notifee.onBackgroundEvent === 'function') {
+      const { handleNotifeeBackgroundEvent } = require('./src/notifications/notifee');
+      notifee.onBackgroundEvent(handleNotifeeBackgroundEvent);
+    }
+  } catch (err) {
+    console.warn('[Notifee] Failed to register background event handler:', err);
+  }
 }
 
 // ── Expo Router entry ───────────────────────────────────────────────────────

@@ -4,9 +4,10 @@
  * Exports the same interface as index.native.ts.
  */
 
-export const RTCPeerConnection = window.RTCPeerConnection;
-export const RTCSessionDescription = window.RTCSessionDescription;
-export const RTCIceCandidate = window.RTCIceCandidate;
+export const RTCPeerConnection = typeof window !== 'undefined' ? window.RTCPeerConnection : (null as any);
+export const RTCSessionDescription = typeof window !== 'undefined' ? window.RTCSessionDescription : (null as any);
+export const RTCIceCandidate = typeof window !== 'undefined' ? window.RTCIceCandidate : (null as any);
+export const MediaStream = typeof window !== 'undefined' ? window.MediaStream : (null as any);
 
 export type RTCPeerConnectionConfiguration = RTCConfiguration;
 export type MediaStreamConstraints = globalThis.MediaStreamConstraints;

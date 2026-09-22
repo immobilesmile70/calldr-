@@ -5,6 +5,7 @@ import {
   set,
   remove,
   push,
+  update,
   get,
   off,
   DataSnapshot,
@@ -71,19 +72,14 @@ export async function setCallState(
   state: CallState,
   extra?: Partial<CallRoom>,
 ): Promise<void> {
-  const updates: Partial<CallRoom> & { state: CallState } = { state, ...extra };
+  const updates: Record<string, any> = { state, ...extra };
   if (state === 'active') {
-    // @ts-expect-error serverTimestamp() is a valid RTDB value
     updates.answeredAt = serverTimestamp();
   }
   if (state === 'ended' || state === 'declined' || state === 'cancelled' || state === 'missed') {
-    // @ts-expect-error serverTimestamp() is a valid RTDB value
     updates.endedAt = serverTimestamp();
   }
-  await set(ref(rtdb, `calls/${roomId}`), {
-    ...((await get(ref(rtdb, `calls/${roomId}`))).val() ?? {}),
-    ...updates,
-  });
+  await update(ref(rtdb, `calls/${roomId}`), updates);
 }
 
 export async function setMediaFlags(

@@ -63,11 +63,13 @@ export function createPeerConnection(opts: PeerOptions): AnyPC {
 
   pc.onicecandidate = (event: AnyPC) => {
     if (event.candidate) {
+      console.log('[WebRTC] Local ICE candidate gathered:', event.candidate.candidate?.slice(0, 40));
       opts.onIceCandidate(JSON.stringify(event.candidate));
     }
   };
 
   pc.ontrack = (event: AnyPC) => {
+    console.log('[WebRTC] ontrack event received. Has streams:', !!(event.streams && event.streams[0]), 'Track kind:', event.track?.kind);
     if (event.streams && event.streams[0]) {
       opts.onTrack(event.streams[0]);
       return;
@@ -80,15 +82,17 @@ export function createPeerConnection(opts: PeerOptions): AnyPC {
       }
       try {
         remoteStream.addTrack(event.track);
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn('[WebRTC] remoteStream.addTrack error:', err);
       }
       opts.onTrack(remoteStream);
     }
   };
 
   pc.onconnectionstatechange = () => {
-    opts.onConnectionStateChange(pc.connectionState as RTCPeerConnectionState);
+    const state = pc.connectionState as RTCPeerConnectionState;
+    console.log('[WebRTC] Connection state changed:', state);
+    opts.onConnectionStateChange(state);
   };
 
   return pc;
@@ -106,20 +110,36 @@ export class IceCandidateQueue {
   }
 
   async add(candidateJson: string): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { RTCIceCandidate } = require('./index');
-    const candidate = new RTCIceCandidate(JSON.parse(candidateJson) as object);
-    if (this.remoteDescSet) {
-      await this.pc.addIceCandidate(candidate);
-    } else {
-      this.queue.push(candidate);
+    try {
+      if (!candidateJson) return;
+      const parsed = typeof candidateJson === 'string' ? JSON.parse(candidateJson) : candidateJson;
+      if (!parsed || (!parsed.candidate && parsed.candidate !== '')) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { RTCIceCandidate } = require('./index');
+      const candidate = new RTCIceCandidate(parsed);
+
+      if (this.remoteDescSet) {
+        await this.pc.addIceCandidate(candidate).catch((err: any) => {
+          console.warn('[WebRTC] addIceCandidate error:', err?.message || err);
+        });
+      } else {
+        this.queue.push(candidate);
+      }
+    } catch (err) {
+      console.warn('[WebRTC] IceCandidateQueue parse/add error:', err);
     }
   }
 
   async flush(): Promise<void> {
     this.remoteDescSet = true;
+    console.log(`[WebRTC] Flushing ${this.queue.length} queued ICE candidates`);
     for (const candidate of this.queue) {
-      await this.pc.addIceCandidate(candidate);
+      try {
+        await this.pc.addIceCandidate(candidate);
+      } catch (err: any) {
+        console.warn('[WebRTC] addIceCandidate error in flush:', err?.message || err);
+      }
     }
     this.queue = [];
   }

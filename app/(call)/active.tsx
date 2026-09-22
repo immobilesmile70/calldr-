@@ -39,13 +39,23 @@ function RemoteAudioWeb({ stream }: { stream: MediaStream | null }) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
   React.useEffect(() => {
-    if (audioRef.current && stream) {
-      audioRef.current.srcObject = stream;
-      audioRef.current.play().catch(() => {});
+    const el = audioRef.current;
+    if (el && stream) {
+      el.srcObject = stream;
+      el.play().catch((err) => {
+        console.warn('[WebRTC AudioWeb] Autoplay blocked, waiting for user click:', err);
+        const unlock = () => {
+          el.play().catch(() => {});
+          window.removeEventListener('click', unlock);
+          window.removeEventListener('touchstart', unlock);
+        };
+        window.addEventListener('click', unlock, { once: true });
+        window.addEventListener('touchstart', unlock, { once: true });
+      });
     }
   }, [stream]);
 
-  if (Platform.OS !== 'web' || !stream) return null;
+  if (Platform.OS !== 'web') return null;
 
   return (
     <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }} />
@@ -176,6 +186,7 @@ export default function ActiveCallScreen() {
           streamURL={(media.remoteStream as { toURL?: () => string }).toURL?.() ?? ''}
           stream={media.remoteStream}
           objectFit="cover"
+          zOrder={0}
           style={StyleSheet.absoluteFillObject}
         />
       ) : (
@@ -216,6 +227,7 @@ export default function ActiveCallScreen() {
               stream={media.localStream}
               mirror
               objectFit="cover"
+              zOrder={1}
               style={styles.localPreviewInner}
             />
           </View>

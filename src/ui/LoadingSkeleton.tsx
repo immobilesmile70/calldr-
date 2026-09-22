@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Animated, StyleProp, ViewStyle } from 'react-native';
+import { StyleSheet, Animated, StyleProp, ViewStyle, Platform } from 'react-native';
 import { colors, radii } from '@/theme/tokens';
 
 interface LoadingSkeletonProps {
@@ -27,12 +27,12 @@ export function LoadingSkeleton({
         Animated.timing(shimmer, {
           toValue: 1,
           duration: 900,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
         Animated.timing(shimmer, {
           toValue: 0,
           duration: 900,
-          useNativeDriver: true,
+          useNativeDriver: Platform.OS !== 'web',
         }),
       ]),
     );

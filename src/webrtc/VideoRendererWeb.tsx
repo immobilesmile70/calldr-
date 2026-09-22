@@ -18,8 +18,12 @@ export function VideoRendererWeb({
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
+    const el = videoRef.current;
+    if (el && stream) {
+      el.srcObject = stream;
+      el.play().catch((err) => {
+        console.warn('[WebRTC VideoWeb] Auto-play failed, retrying on user interaction:', err);
+      });
     }
   }, [stream]);
 
@@ -28,7 +32,7 @@ export function VideoRendererWeb({
       ref={videoRef}
       autoPlay
       playsInline
-      muted={mirror} // mute local preview to avoid echo
+      muted={true} // ALWAYS mute video elements — audio is played through RemoteAudioWeb
       style={{
         width: '100%',
         height: '100%',

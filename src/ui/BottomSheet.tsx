@@ -42,12 +42,12 @@ export function BottomSheet({
         toValue: 0,
         damping: 26,
         stiffness: 300,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
       Animated.timing(backdropOpacity, {
         toValue: 1,
         duration: ANIMATION_DURATION,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
     ]).start();
   }, [slideY, backdropOpacity]);
@@ -58,12 +58,12 @@ export function BottomSheet({
         toValue: SCREEN_HEIGHT,
         damping: 26,
         stiffness: 300,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
       Animated.timing(backdropOpacity, {
         toValue: 0,
         duration: ANIMATION_DURATION,
-        useNativeDriver: true,
+        useNativeDriver: Platform.OS !== 'web',
       }),
     ]).start(onClose);
   }, [slideY, backdropOpacity, onClose]);

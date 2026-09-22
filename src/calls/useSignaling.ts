@@ -69,6 +69,7 @@ export function useSignaling({
   const hasProcessedAnswerRef = useRef(false);
   const isProcessingOfferRef = useRef(false);
   const isProcessingAnswerRef = useRef(false);
+  const processedIceKeysRef = useRef<Set<string>>(new Set());
 
   const initPeer = useCallback(async () => {
     if (!roomId) return;
@@ -79,6 +80,7 @@ export function useSignaling({
     hasProcessedAnswerRef.current = false;
     isProcessingOfferRef.current = false;
     isProcessingAnswerRef.current = false;
+    processedIceKeysRef.current = new Set();
 
     const iceServers = await fetchIceServers(idToken);
 
@@ -200,12 +202,15 @@ export function useSignaling({
 
           if (remotePc.signalingState === 'stable') {
             const offerDesc = JSON.parse(updatedRoom.offer) as RTCSessionDescriptionInit;
+            console.log('[WebRTC] Callee setting remote offer SDP');
             await remotePc.setRemoteDescription(offerDesc);
             hasProcessedOfferRef.current = true;
             await queue.flush();
+            console.log('[WebRTC] Callee creating answer');
             const answer = await remotePc.createAnswer();
             await remotePc.setLocalDescription(answer);
             await writeAnswer(roomId, JSON.stringify(answer));
+            console.log('[WebRTC] Callee wrote answer, setting state to active');
             await setCallState(roomId, 'active');
             await applyBitrateConstraints(remotePc, updatedRoom.video);
           }
@@ -234,10 +239,12 @@ export function useSignaling({
         try {
           const answerDesc = JSON.parse(updatedRoom.answer) as RTCSessionDescriptionInit;
           if (remotePc.signalingState === 'have-local-offer') {
+            console.log('[WebRTC] Caller setting remote answer SDP');
             await remotePc.setRemoteDescription(answerDesc);
             hasProcessedAnswerRef.current = true;
             await queue.flush();
             await applyBitrateConstraints(remotePc, updatedRoom.video);
+            console.log('[WebRTC] Caller remote answer set successfully');
           }
         } catch (err: any) {
           if (err?.name === 'InvalidStateError' || err?.message?.includes('Called in wrong state')) {
@@ -250,11 +257,13 @@ export function useSignaling({
         }
       }
 
-      // Both sides: process new ICE candidates
+      // Both sides: process new ICE candidates (each candidate processed exactly once)
       const mySide = isCaller ? 'callee' : 'caller'; // receive other side's ICE
       const iceData = updatedRoom.ice?.[mySide as 'caller' | 'callee'];
-      if (iceData) {
-        for (const candidateJson of Object.values(iceData)) {
+      if (iceData && typeof iceData === 'object') {
+        for (const [key, candidateJson] of Object.entries(iceData)) {
+          if (processedIceKeysRef.current.has(key)) continue;
+          processedIceKeysRef.current.add(key);
           await queue.add(candidateJson as string).catch(() => {});
         }
       }

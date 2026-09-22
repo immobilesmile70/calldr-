@@ -103,7 +103,29 @@ async function handleInvite(
   // Busy check: look for existing active/ringing room for callee
   const incomingSnap = await db.ref(`incoming/${calleeUid}`).get();
   if (incomingSnap.exists()) {
-    return err(res, 'User is already in a call.', 409, 'BUSY');
+    const incomingData = incomingSnap.val() as { roomId?: string; ts?: number };
+    const now = Date.now();
+    const isOld = incomingData?.ts ? now - incomingData.ts > 45_000 : false;
+
+    let isStale = isOld;
+    if (!isStale && incomingData?.roomId) {
+      const roomSnap = await db.ref(`calls/${incomingData.roomId}`).get();
+      if (!roomSnap.exists()) {
+        isStale = true;
+      } else {
+        const room = roomSnap.val() as CallRoom;
+        if (room.state !== 'ringing' && room.state !== 'active') {
+          isStale = true;
+        }
+      }
+    }
+
+    if (isStale) {
+      // Clean up orphaned incoming record and allow call to proceed
+      await db.ref(`incoming/${calleeUid}`).remove();
+    } else {
+      return err(res, 'User is already in a call.', 409, 'BUSY');
+    }
   }
 
   // Get usernames
@@ -133,6 +155,7 @@ async function handleInvite(
     [`calls/${roomId}`]: room,
     [`incoming/${calleeUid}`]: {
       roomId,
+      callerUid,
       callerName,
       video,
       durationSec,
@@ -146,6 +169,7 @@ async function handleInvite(
     {
       type: 'incoming_call',
       roomId,
+      calleeUid,
       callerName,
       video: String(video),
       durationSec: String(durationSec),

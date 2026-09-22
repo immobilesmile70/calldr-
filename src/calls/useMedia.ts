@@ -45,6 +45,17 @@ export function useMedia(
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [ready, setReady] = useState(false);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const isKeepAwakeActiveRef = useRef(false);
+
+  const safeDeactivateKeepAwake = useCallback(async () => {
+    if (!isKeepAwakeActiveRef.current) return;
+    isKeepAwakeActiveRef.current = false;
+    try {
+      await KeepAwake.deactivateKeepAwake();
+    } catch {
+      // ignore wake lock errors if not active or unsupported
+    }
+  }, []);
 
   // Acquire media
   useEffect(() => {
@@ -77,11 +88,26 @@ export function useMedia(
 
   // Keep awake during call
   useEffect(() => {
-    KeepAwake.activateKeepAwakeAsync().catch(() => {});
+    let cancelled = false;
+    KeepAwake.activateKeepAwakeAsync()
+      .then(() => {
+        if (cancelled) {
+          try {
+            KeepAwake.deactivateKeepAwake().catch?.(() => {});
+          } catch {
+            // ignore
+          }
+        } else {
+          isKeepAwakeActiveRef.current = true;
+        }
+      })
+      .catch(() => {});
+
     return () => {
-      KeepAwake.deactivateKeepAwake();
+      cancelled = true;
+      safeDeactivateKeepAwake();
     };
-  }, []);
+  }, [safeDeactivateKeepAwake]);
 
   // Pause local video when backgrounded
   useEffect(() => {
@@ -142,8 +168,8 @@ export function useMedia(
     localStreamRef.current = null;
     setLocalStream(null);
     InCallManager?.stop();
-    KeepAwake.deactivateKeepAwake();
-  }, []);
+    safeDeactivateKeepAwake();
+  }, [safeDeactivateKeepAwake]);
 
   return {
     localStream,

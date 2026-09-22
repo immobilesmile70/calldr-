@@ -54,7 +54,7 @@
     "incoming": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid && (!newData.exists())"
+        ".write": "auth != null && (!newData.exists()) && (auth.uid === $uid || data.child('callerUid').val() === auth.uid || root.child('calls').child(data.child('roomId').val()).child('callerUid').val() === auth.uid)"
       }
     }
   }

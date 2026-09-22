@@ -21,6 +21,7 @@ export async function handleBackgroundFCM(
   switch (type) {
     case 'incoming_call': {
       const roomId = typeof data['roomId'] === 'string' ? data['roomId'] : undefined;
+      const calleeUid = typeof data['calleeUid'] === 'string' ? data['calleeUid'] : undefined;
       const callerName = typeof data['callerName'] === 'string' ? data['callerName'] : undefined;
       const video = data['video'] === 'true';
       const durationSecStr = typeof data['durationSec'] === 'string' ? data['durationSec'] : '300';
@@ -28,6 +29,7 @@ export async function handleBackgroundFCM(
       if (roomId && callerName) {
         await showIncomingCallNotification({
           roomId,
+          calleeUid,
           callerName,
           video,
           durationSec,

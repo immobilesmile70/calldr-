@@ -67,6 +67,7 @@ export interface CallRoom {
 /** RTDB: incoming/{calleeUid} */
 export interface IncomingCall {
   roomId: string;
+  callerUid?: string;
   callerName: string;
   video: boolean;
   durationSec: number;

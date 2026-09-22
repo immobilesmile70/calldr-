@@ -22,6 +22,7 @@ const ONGOING_CALL_CHANNEL_ID = 'calldr-ongoing-call';
 
 export interface IncomingCallInfo {
   roomId: string;
+  calleeUid?: string;
   callerName: string;
   video: boolean;
   durationSec: number;
@@ -55,6 +56,7 @@ export async function showIncomingCallNotification(
     data: {
       type: 'incoming_call',
       roomId: info.roomId,
+      calleeUid: info.calleeUid ?? '',
       callerName: info.callerName,
       video: String(info.video),
       durationSec: String(info.durationSec),
@@ -162,13 +164,17 @@ export async function handleNotifeeBackgroundEvent({
     // Need to restore auth state before writing RTDB
     // On Android, the auth state persists via AsyncStorage
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { setCallState } = require('@/firebase/rtdb');
-    await setCallState(roomId, 'declined', { endedBy: 'callee' });
+    const { setCallState, deleteIncoming } = require('@/firebase/rtdb');
+    await setCallState(roomId, 'declined', { endedBy: 'callee' }).catch(() => {});
+    const calleeUid = data['calleeUid'] as string | undefined;
+    if (calleeUid) {
+      await deleteIncoming(calleeUid).catch(() => {});
+    }
     await dismissCallNotification(roomId);
   } else if (actionId === 'hang_up_call') {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { setCallState } = require('@/firebase/rtdb');
-    await setCallState(roomId, 'ended', { endedBy: 'callee' });
+    await setCallState(roomId, 'ended', { endedBy: 'callee' }).catch(() => {});
     await dismissOngoingCallNotification();
   }
 }

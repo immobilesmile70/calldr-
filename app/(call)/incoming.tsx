@@ -1,16 +1,18 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
+  Platform,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@/ui/Avatar';
 import { PillButton } from '@/ui/PillButton';
 import { Wordmark } from '@/ui/Wordmark';
-import { setCallState, deleteIncoming } from '@/firebase/rtdb';
+import { setCallState, deleteIncoming, watchCallRoom } from '@/firebase/rtdb';
+import { dismissCallNotification } from '@/notifications/notifee';
 import { useAuth } from '@/lib/useAuth';
 import { colors, spacing, fontSize, radii } from '@/theme/tokens';
 
@@ -27,7 +29,38 @@ export default function IncomingCallScreen() {
   const durationMin = Math.round(parseInt(durationSec ?? '300', 10) / 60);
   const modeLabel = isVideo ? 'Video' : 'Audio';
 
+  // Watch for caller cancelling or call ending while ringing
+  useEffect(() => {
+    if (!roomId) return;
+    const unwatch = watchCallRoom(roomId, (room) => {
+      if (!room) return;
+      if (
+        room.state === 'cancelled' ||
+        room.state === 'ended' ||
+        room.state === 'missed' ||
+        room.state === 'declined'
+      ) {
+        if (user?.uid) {
+          deleteIncoming(user.uid).catch(() => {});
+        }
+        if (Platform.OS === 'android') {
+          dismissCallNotification(roomId).catch(() => {});
+        }
+        router.replace('/(main)/home');
+      }
+    });
+    return () => {
+      unwatch();
+    };
+  }, [roomId, user?.uid]);
+
   const handleAccept = useCallback(() => {
+    if (user?.uid) {
+      deleteIncoming(user.uid).catch(() => {});
+    }
+    if (Platform.OS === 'android' && roomId) {
+      dismissCallNotification(roomId).catch(() => {});
+    }
     router.replace({
       pathname: '/(call)/active',
       params: {
@@ -38,13 +71,18 @@ export default function IncomingCallScreen() {
         durationSec,
       },
     });
-  }, [roomId, callerName, video, durationSec]);
+  }, [roomId, callerName, video, durationSec, user?.uid]);
 
   const handleDecline = useCallback(async () => {
     try {
       await setCallState(roomId!, 'declined', { endedBy: user?.uid });
-      if (user?.uid) await deleteIncoming(user.uid);
     } catch { /* ignore */ }
+    if (user?.uid) {
+      await deleteIncoming(user.uid).catch(() => {});
+    }
+    if (Platform.OS === 'android' && roomId) {
+      dismissCallNotification(roomId).catch(() => {});
+    }
     router.replace('/(main)/home');
   }, [roomId, user?.uid]);
 

@@ -47,7 +47,25 @@ export async function getLocalStream(video: boolean): Promise<MediaStream> {
   }
 }
 
-/** Flip camera not natively available on web */
-export async function flipCamera(_stream: MediaStream): Promise<void> {
-  console.warn('[WebRTC Web] flipCamera not supported in browser');
+let currentFacingMode: 'user' | 'environment' = 'user';
+
+/** Flip camera on web (front ↔ back) */
+export async function flipCamera(stream: MediaStream): Promise<void> {
+  try {
+    currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: currentFacingMode } },
+    });
+    const newTrack = newStream.getVideoTracks()[0];
+    if (!newTrack) return;
+
+    const oldTrack = stream.getVideoTracks()[0];
+    if (oldTrack) {
+      oldTrack.stop();
+      stream.removeTrack(oldTrack);
+    }
+    stream.addTrack(newTrack);
+  } catch (err) {
+    console.warn('[WebRTC Web] flipCamera error:', err);
+  }
 }

@@ -31,6 +31,9 @@ export function VideoRendererWeb({
         el.srcObject = stream;
       }
       el.play().catch((err) => {
+        if (err?.name === 'AbortError') {
+          return;
+        }
         console.warn('[WebRTC VideoWeb] Auto-play blocked, waiting for user gesture:', err);
         const unlock = () => {
           el.play().catch(() => {});

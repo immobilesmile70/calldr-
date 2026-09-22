@@ -17,27 +17,31 @@ export interface IceServer {
   credential?: string;
 }
 
+export const HIGH_AVAILABILITY_STUN_SERVERS: IceServer[] = [
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'stun:global.stun.twilio.com:3478' },
+  { urls: 'stun:stun.nextcloud.com:3478' },
+  { urls: 'stun:stun.voip.blackberry.com:3478' },
+  { urls: 'stun:stun.miwifi.com:3478' },
+  { urls: 'stun:stun.l.google.com:19302' },
+];
+
 export async function fetchIceServers(idToken: string): Promise<IceServer[]> {
-  const fallbackServers: IceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-  ];
   try {
     const resp = await fetch(`${API_URL}/calls/ice`, {
       headers: { Authorization: `Bearer ${idToken}` },
     });
     if (!resp.ok) {
-      console.warn('[WebRTC] Failed to fetch ICE servers, falling back to Google STUN');
-      return fallbackServers;
+      console.warn('[WebRTC] Failed to fetch ICE servers, using high-availability STUN');
+      return HIGH_AVAILABILITY_STUN_SERVERS;
     }
     const data = (await resp.json()) as { data?: { iceServers?: IceServer[] } };
     return data?.data?.iceServers && data.data.iceServers.length > 0
       ? data.data.iceServers
-      : fallbackServers;
+      : HIGH_AVAILABILITY_STUN_SERVERS;
   } catch (err) {
-    console.warn('[WebRTC] Error fetching ICE servers, falling back to Google STUN:', err);
-    return fallbackServers;
+    console.warn('[WebRTC] Error fetching ICE servers, using high-availability STUN:', err);
+    return HIGH_AVAILABILITY_STUN_SERVERS;
   }
 }
 
@@ -72,13 +76,19 @@ export function createPeerConnection(opts: PeerOptions): AnyPC {
   pc.onicecandidate = (event: AnyPC) => {
     if (event.candidate && event.candidate.candidate) {
       const c = event.candidate;
-      const candidateInit = {
+      const candidateInit: any = {
         candidate: c.candidate,
-        sdpMid: c.sdpMid !== null && c.sdpMid !== undefined ? String(c.sdpMid) : '0',
-        sdpMLineIndex: c.sdpMLineIndex !== null && c.sdpMLineIndex !== undefined ? Number(c.sdpMLineIndex) : 0,
-        usernameFragment: c.usernameFragment || undefined,
       };
-      console.log('[WebRTC] Local ICE candidate gathered:', candidateInit.candidate?.slice(0, 40));
+      if (c.sdpMid != null) {
+        candidateInit.sdpMid = String(c.sdpMid);
+      }
+      if (c.sdpMLineIndex != null) {
+        candidateInit.sdpMLineIndex = Number(c.sdpMLineIndex);
+      }
+      if (c.usernameFragment) {
+        candidateInit.usernameFragment = c.usernameFragment;
+      }
+      console.log('[WebRTC] Local ICE candidate gathered:', candidateInit.candidate);
       opts.onIceCandidate(JSON.stringify(candidateInit));
     }
   };
@@ -150,9 +160,13 @@ export class IceCandidateQueue {
 
       const candInit: any = {
         candidate: parsed.candidate,
-        sdpMid: parsed.sdpMid !== null && parsed.sdpMid !== undefined ? String(parsed.sdpMid) : '0',
-        sdpMLineIndex: parsed.sdpMLineIndex !== null && parsed.sdpMLineIndex !== undefined ? Number(parsed.sdpMLineIndex) : 0,
       };
+      if (parsed.sdpMid != null) {
+        candInit.sdpMid = String(parsed.sdpMid);
+      }
+      if (parsed.sdpMLineIndex != null) {
+        candInit.sdpMLineIndex = Number(parsed.sdpMLineIndex);
+      }
       if (parsed.usernameFragment) {
         candInit.usernameFragment = parsed.usernameFragment;
       }
@@ -169,10 +183,13 @@ export class IceCandidateQueue {
       }
 
       if (this.remoteDescSet && this.pc.remoteDescription) {
-        await this.pc.addIceCandidate(candidate).catch((err: any) => {
+        await this.pc.addIceCandidate(candidate).then(() => {
+          console.log('[WebRTC] Applied remote ICE candidate:', candInit.candidate?.slice(0, 50));
+        }).catch((err: any) => {
           console.warn('[WebRTC] addIceCandidate error:', err?.message || err);
         });
       } else {
+        console.log(`[WebRTC] Buffering remote ICE candidate (queue size: ${this.queue.length + 1})`);
         this.queue.push(candidate);
       }
     } catch (err) {

@@ -213,7 +213,18 @@ export function useSignaling({
       const remotePc = pcRef.current;
       const queue = iceQueueRef.current!;
 
-      // Callee: read offer, set remote desc, attach local tracks, create answer, set local desc, flush ICE!
+      // 1. Process and enqueue all new incoming ICE candidates FIRST
+      const mySide = isCaller ? 'callee' : 'caller'; // receive other side's ICE
+      const iceData = updatedRoom.ice?.[mySide as 'caller' | 'callee'];
+      if (iceData && typeof iceData === 'object') {
+        for (const [key, candidateJson] of Object.entries(iceData)) {
+          if (processedIceKeysRef.current.has(key)) continue;
+          processedIceKeysRef.current.add(key);
+          await queue.add(candidateJson as string).catch(() => {});
+        }
+      }
+
+      // 2. Callee: read offer, set remote desc, attach local tracks, create answer, set local desc, flush ICE!
       if (
         !isCaller &&
         updatedRoom.offer &&
@@ -260,7 +271,7 @@ export function useSignaling({
         }
       }
 
-      // Caller: read answer
+      // 3. Caller: read answer
       if (
         isCaller &&
         updatedRoom.answer &&
@@ -289,17 +300,6 @@ export function useSignaling({
           }
         } finally {
           isProcessingAnswerRef.current = false;
-        }
-      }
-
-      // Both sides: process new ICE candidates (each candidate processed exactly once)
-      const mySide = isCaller ? 'callee' : 'caller'; // receive other side's ICE
-      const iceData = updatedRoom.ice?.[mySide as 'caller' | 'callee'];
-      if (iceData && typeof iceData === 'object') {
-        for (const [key, candidateJson] of Object.entries(iceData)) {
-          if (processedIceKeysRef.current.has(key)) continue;
-          processedIceKeysRef.current.add(key);
-          await queue.add(candidateJson as string).catch(() => {});
         }
       }
 

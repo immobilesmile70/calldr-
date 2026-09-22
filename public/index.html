@@ -14,13 +14,26 @@
       rel="stylesheet"
     />
     <style>
-      html, body, #root {
+      html, body {
         height: 100%;
         margin: 0;
         padding: 0;
         background-color: #0E0E11;
         font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
         -webkit-font-smoothing: antialiased;
+      }
+      #root {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 100%;
+        width: 100%;
+      }
+      #root > div {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        flex: 1;
       }
     </style>
   </head>

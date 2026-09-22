@@ -53,12 +53,18 @@ export function useSignaling({
   const iceQueueRef = useRef<IceCandidateQueue | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const iceGenRef = useRef<number>(0);
+  const isClosingRef = useRef(false);
   const isCaller = role ? role === 'caller' : room ? room.callerUid === myUid : false;
 
+  const onRemoteStreamRef = useRef(onRemoteStream);
+  onRemoteStreamRef.current = onRemoteStream;
+  const onConnectionStateChangeRef = useRef(onConnectionStateChange);
+  onConnectionStateChangeRef.current = onConnectionStateChange;
   const onEndRef = useRef(onEnd);
   onEndRef.current = onEnd;
 
   const initPeer = useCallback(async () => {
+    if (!roomId) return;
     const idToken = await getIdToken();
     if (!idToken) return;
 
@@ -71,10 +77,10 @@ export function useSignaling({
         await pushIceCandidate(roomId, side, candidateJson).catch(() => {});
       },
       onTrack: (stream) => {
-        onRemoteStream(stream);
+        onRemoteStreamRef.current(stream);
       },
       onConnectionStateChange: async (state) => {
-        onConnectionStateChange(state);
+        onConnectionStateChangeRef.current(state);
         if (state === 'disconnected' || state === 'failed') {
           if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
           reconnectTimerRef.current = setTimeout(() => {
@@ -97,7 +103,9 @@ export function useSignaling({
             reconnectTimerRef.current = null;
           }
         } else if (state === 'closed') {
-          onEndRef.current('closed');
+          if (!isClosingRef.current) {
+            onEndRef.current('closed');
+          }
         }
       },
     });
@@ -105,7 +113,7 @@ export function useSignaling({
     pcRef.current = pc;
     iceQueueRef.current = new IceCandidateQueue(pc);
 
-    // Add local tracks
+    // Add local tracks if already available
     if (localStream) {
       for (const track of localStream.getTracks()) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -180,17 +188,43 @@ export function useSignaling({
     });
 
     return unwatch;
-  }, [roomId, isCaller, localStream, onRemoteStream, onConnectionStateChange]);
+  }, [roomId, isCaller]);
+
+  // Sync local tracks into peer connection whenever localStream changes
+  useEffect(() => {
+    const pc = pcRef.current;
+    if (!pc || !localStream) return;
+    try {
+      const senders = typeof pc.getSenders === 'function' ? pc.getSenders() : [];
+      for (const track of localStream.getTracks()) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const existing = senders.find((s: any) => s.track?.kind === track.kind);
+        if (existing && typeof existing.replaceTrack === 'function') {
+          existing.replaceTrack(track).catch(() => {});
+        } else if (typeof pc.addTrack === 'function') {
+          pc.addTrack(track as any, localStream as any);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [localStream]);
 
   useEffect(() => {
+    isClosingRef.current = false;
     let unwatch: (() => void) | undefined;
     initPeer().then((u) => { unwatch = u; }).catch(() => {});
 
     return () => {
+      isClosingRef.current = true;
       unwatch?.();
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (pcRef.current) {
-        pcRef.current.close();
+        try {
+          pcRef.current.close();
+        } catch {
+          // ignore
+        }
         pcRef.current = null;
       }
     };

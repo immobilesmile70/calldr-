@@ -38,26 +38,30 @@ export default function RootLayout() {
     if (!rootNavigationState?.key) return;
     if (loading || !fontsLoaded) return;
 
-    const currentGroup = (segments as string[])[0];
-    const inAuthGroup = currentGroup === '(auth)';
-    const inOnboardingGroup = currentGroup === '(onboarding)';
+    const segs = segments as string[];
+    const isAuthRoute = segs.some(
+      (s) => s === '(auth)' || s === 'login' || s === 'signup' || s === 'forgot'
+    );
+    const isOnboardingRoute = segs.some(
+      (s) => s === '(onboarding)' || s === 'username'
+    );
 
     if (!user) {
-      if (currentGroup && !inAuthGroup) {
+      if (!isAuthRoute && segs.length > 0 && segs[0] !== 'index') {
         router.replace('/');
       }
       return;
     }
 
     if (userDoc && !userDoc.onboarded) {
-      if (!inOnboardingGroup) {
+      if (!isOnboardingRoute) {
         router.replace('/(onboarding)/username');
       }
       return;
     }
 
     if (userDoc?.onboarded) {
-      if (!currentGroup || inAuthGroup || inOnboardingGroup) {
+      if (isAuthRoute || isOnboardingRoute || segs.length === 0 || segs[0] === 'index') {
         router.replace('/(main)/home');
       }
     }

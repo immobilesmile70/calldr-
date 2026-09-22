@@ -30,9 +30,14 @@ export function getAdminApp(): admin.app.App {
     });
   }
 
+  let databaseURL = process.env['FIREBASE_DATABASE_URL'] || 'https://calldr-default-rtdb.asia-southeast1.firebasedatabase.app';
+  if (databaseURL.includes('firebaseio.com') && !databaseURL.includes('asia-southeast1')) {
+    databaseURL = 'https://calldr-default-rtdb.asia-southeast1.firebasedatabase.app';
+  }
+
   admin.initializeApp({
     credential,
-    databaseURL: process.env['FIREBASE_DATABASE_URL']!,
+    databaseURL,
   });
 
   adminInitialized = true;

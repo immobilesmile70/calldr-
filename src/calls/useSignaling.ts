@@ -21,7 +21,8 @@ const RING_TIMEOUT_MS = 30_000;
 
 export interface SignalingOptions {
   roomId: string;
-  room: CallRoom;
+  room: CallRoom | null;
+  role?: 'caller' | 'callee';
   myUid: string;
   localStream: MediaStream | null;
   onRemoteStream: (stream: MediaStream) => void;
@@ -40,6 +41,7 @@ export interface SignalingOptions {
 export function useSignaling({
   roomId,
   room,
+  role,
   myUid,
   localStream,
   onRemoteStream,
@@ -51,7 +53,7 @@ export function useSignaling({
   const iceQueueRef = useRef<IceCandidateQueue | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const iceGenRef = useRef<number>(0);
-  const isCaller = room.callerUid === myUid;
+  const isCaller = role ? role === 'caller' : room ? room.callerUid === myUid : false;
 
   const onEndRef = useRef(onEnd);
   onEndRef.current = onEnd;

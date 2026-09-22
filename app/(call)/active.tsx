@@ -33,7 +33,7 @@ const LOCAL_PREVIEW_SIZE = 100;
 
 export default function ActiveCallScreen() {
   const { user } = useAuth();
-  const { roomId, contactName, video, durationSec } = useLocalSearchParams<{
+  const { roomId, contactName, video, durationSec, role } = useLocalSearchParams<{
     roomId: string;
     role: 'caller' | 'callee';
     contactName: string;
@@ -63,7 +63,8 @@ export default function ActiveCallScreen() {
 
   const { muteAudio, muteVideo } = useSignaling({
     roomId: roomId!,
-    room: room!,
+    room,
+    role,
     myUid: user?.uid ?? '',
     localStream: media.localStream,
     onRemoteStream: media.setRemote,

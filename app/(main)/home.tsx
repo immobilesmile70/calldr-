@@ -137,6 +137,11 @@ export default function HomeScreen() {
   const handleCall = useCallback(async () => {
     if (!callSheetContact) return;
     setCallLoading(true);
+    let roomId: string | null = null;
+    const contactName = callSheetContact.username;
+    const isVideo = selectedMode === 'video';
+    const durationSeconds = selectedDuration * 60;
+
     try {
       const idToken = await getIdToken();
       const resp = await fetch(`${API_URL}/calls/invite`, {
@@ -144,8 +149,8 @@ export default function HomeScreen() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           calleeUid: callSheetContact.uid,
-          durationSec: selectedDuration * 60,
-          video: selectedMode === 'video',
+          durationSec: durationSeconds,
+          video: isVideo,
         }),
       });
       const data = await resp.json() as { ok: boolean; data?: { roomId: string }; error?: string };
@@ -153,21 +158,27 @@ export default function HomeScreen() {
         Alert.alert('Call failed', data.error ?? 'Could not start call. Try again.');
         return;
       }
+      roomId = data.data?.roomId ?? null;
+    } catch (err) {
+      console.warn('[Call] API invite failed:', err);
+      Alert.alert('Network error', 'Check your connection and try again.');
+      return;
+    } finally {
+      setCallLoading(false);
+    }
+
+    if (roomId) {
       setCallSheetContact(null);
       router.push({
         pathname: '/(call)/active',
         params: {
-          roomId: data.data!.roomId,
+          roomId,
           role: 'caller',
-          contactName: callSheetContact.username,
-          video: String(selectedMode === 'video'),
-          durationSec: String(selectedDuration * 60),
+          contactName,
+          video: String(isVideo),
+          durationSec: String(durationSeconds),
         },
       });
-    } catch {
-      Alert.alert('Network error', 'Check your connection and try again.');
-    } finally {
-      setCallLoading(false);
     }
   }, [callSheetContact, selectedDuration, selectedMode]);
 

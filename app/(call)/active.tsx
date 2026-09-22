@@ -83,7 +83,7 @@ export default function ActiveCallScreen() {
       dismissOngoingCallNotification().catch(() => {});
       router.replace('/(main)/home');
     }
-  }, [room?.state]);
+  }, [room, media]);
 
   // Show ongoing notification when call becomes active
   useEffect(() => {
@@ -98,6 +98,7 @@ export default function ActiveCallScreen() {
       media.releaseMedia();
       dismissOngoingCallNotification().catch(() => {});
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleEndCall = useCallback(() => {

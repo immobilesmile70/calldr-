@@ -9,7 +9,7 @@ import {
   err,
   parseBody,
 } from '../_lib/admin';
-import { generateUniqueCode } from '../../shared/code';
+import { generateUniqueCode } from '../../shared/codeServer';
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 

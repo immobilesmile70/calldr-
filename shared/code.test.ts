@@ -4,11 +4,13 @@ import {
   normalizeCode,
   formatCode,
   isValidCode,
-  generateCodeRaw,
   computeEndsAt,
   msRemaining,
-  generateUniqueCode,
 } from './code';
+import {
+  generateCodeRaw,
+  generateUniqueCode,
+} from './codeServer';
 
 // ── normalizeCode ────────────────────────────────────────────────────────────
 

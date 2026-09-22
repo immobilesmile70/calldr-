@@ -226,6 +226,9 @@ async function handleIce(
   _req: VercelRequest,
   res: VercelResponse,
 ) {
+  const meteredDomain = process.env['METERED_DOMAIN'] || (process.env['METERED_APP_NAME'] ? `${process.env['METERED_APP_NAME']}.metered.live` : null);
+  const meteredApiKey = process.env['METERED_API_KEY'];
+
   const turnUrls = process.env['TURN_URLS'];
   const turnUsername = process.env['TURN_USERNAME'];
   const turnCredential = process.env['TURN_CREDENTIAL'];
@@ -239,14 +242,28 @@ async function handleIce(
     { urls: 'stun:stun.l.google.com:19302' },
   ];
 
+  // Option A: Fetch dynamic short-lived TURN credentials from Metered.ca REST API
+  if (meteredDomain && meteredApiKey) {
+    try {
+      const resp = await fetch(`https://${meteredDomain}/api/v1/turn/credentials?apiKey=${meteredApiKey}`);
+      if (resp.ok) {
+        const dynamicServers = (await resp.json()) as RTCIceServer[];
+        if (Array.isArray(dynamicServers)) {
+          iceServers.push(...dynamicServers);
+        }
+      }
+    } catch (e) {
+      console.warn('[ice] Failed to fetch dynamic Metered credentials:', e);
+    }
+  }
+
+  // Option B: Static TURN credentials from env vars
   if (turnUrls && turnUsername && turnCredential) {
     iceServers.push({
       urls: turnUrls.split(',').map((u) => u.trim()),
       username: turnUsername,
       credential: turnCredential,
     });
-  } else {
-    console.warn('[ice] TURN credentials not configured — calls on strict NATs may fail.');
   }
 
   return ok(res, { iceServers });

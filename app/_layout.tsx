@@ -1,12 +1,11 @@
 import React, { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, router, useSegments, useRootNavigationState } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, Platform } from 'react-native';
 import { AuthContext, useAuthProvider } from '@/lib/useAuth';
 import { watchIncoming } from '@/firebase/rtdb';
-import { router } from 'expo-router';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -24,6 +23,8 @@ export default function RootLayout() {
 
   const authState = useAuthProvider();
   const { user, userDoc, loading } = authState;
+  const segments = useSegments();
+  const rootNavigationState = useRootNavigationState();
 
   // Hide splash once fonts + auth are resolved
   useEffect(() => {
@@ -34,22 +35,33 @@ export default function RootLayout() {
 
   // Route guard
   useEffect(() => {
+    if (!rootNavigationState?.key) return;
     if (loading || !fontsLoaded) return;
 
+    const currentGroup = (segments as string[])[0];
+    const inAuthGroup = currentGroup === '(auth)';
+    const inOnboardingGroup = currentGroup === '(onboarding)';
+
     if (!user) {
-      router.replace('/');
+      if (currentGroup && !inAuthGroup) {
+        router.replace('/');
+      }
       return;
     }
 
     if (userDoc && !userDoc.onboarded) {
-      router.replace('/(onboarding)/username');
+      if (!inOnboardingGroup) {
+        router.replace('/(onboarding)/username');
+      }
       return;
     }
 
     if (userDoc?.onboarded) {
-      router.replace('/(main)/home');
+      if (!currentGroup || inAuthGroup || inOnboardingGroup) {
+        router.replace('/(main)/home');
+      }
     }
-  }, [user, userDoc, loading, fontsLoaded]);
+  }, [user, userDoc, loading, fontsLoaded, segments, rootNavigationState?.key]);
 
   // RTDB incoming call listener (foreground only)
   useEffect(() => {

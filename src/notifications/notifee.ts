@@ -104,39 +104,74 @@ export async function showOngoingCallNotification(
 ): Promise<void> {
   if (!notifee || Platform.OS !== 'android') return;
 
-  await notifee.createChannel({
-    id: ONGOING_CALL_CHANNEL_ID,
-    name: 'Ongoing Call',
-    importance: AndroidImportance.DEFAULT,
-  });
+  try {
+    await notifee.createChannel({
+      id: ONGOING_CALL_CHANNEL_ID,
+      name: 'Ongoing Call',
+      importance: AndroidImportance.DEFAULT,
+    });
+  } catch {
+    // ignore
+  }
 
-  await notifee.displayNotification({
-    id: 'ongoing_call',
-    title: `Call with ${contactName}`,
-    body: 'Tap to return to call',
-    android: {
-      channelId: ONGOING_CALL_CHANNEL_ID,
-      ongoing: true,
-      asForegroundService: true,
-      foregroundServiceTypes: [
-        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
-        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_CAMERA,
-      ],
-      actions: [
-        {
-          title: 'Hang up',
-          pressAction: { id: 'hang_up_call' },
+  try {
+    await notifee.displayNotification({
+      id: 'ongoing_call',
+      title: `Call with ${contactName}`,
+      body: 'Tap to return to call',
+      android: {
+        channelId: ONGOING_CALL_CHANNEL_ID,
+        ongoing: true,
+        asForegroundService: true,
+        foregroundServiceTypes: [
+          AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+          AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_CAMERA,
+        ],
+        actions: [
+          {
+            title: 'Hang up',
+            pressAction: { id: 'hang_up_call' },
+          },
+        ],
+      },
+    });
+  } catch (err) {
+    console.warn('[Notifee] Failed to start foreground service, displaying regular ongoing notification:', err);
+    try {
+      await notifee.displayNotification({
+        id: 'ongoing_call',
+        title: `Call with ${contactName}`,
+        body: 'Tap to return to call',
+        android: {
+          channelId: ONGOING_CALL_CHANNEL_ID,
+          ongoing: true,
+          actions: [
+            {
+              title: 'Hang up',
+              pressAction: { id: 'hang_up_call' },
+            },
+          ],
         },
-      ],
-    },
-  });
+      });
+    } catch {
+      // ignore
+    }
+  }
 }
 
 /** Dismiss ongoing call notification and stop foreground service */
 export async function dismissOngoingCallNotification(): Promise<void> {
   if (!notifee || Platform.OS !== 'android') return;
-  await notifee.cancelNotification('ongoing_call');
-  await notifee.stopForegroundService();
+  try {
+    await notifee.cancelNotification('ongoing_call');
+  } catch {
+    // ignore
+  }
+  try {
+    await notifee.stopForegroundService();
+  } catch {
+    // ignore
+  }
 }
 
 /**

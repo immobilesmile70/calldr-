@@ -23,7 +23,11 @@ export async function fetchIceServers(idToken: string): Promise<IceServer[]> {
   });
   if (!resp.ok) {
     console.warn('[WebRTC] Failed to fetch ICE servers, falling back to Google STUN');
-    return [{ urls: 'stun:stun.l.google.com:19302' }];
+    return [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+    ];
   }
   const data = await resp.json() as { data: { iceServers: IceServer[] } };
   return data.data.iceServers;
@@ -55,6 +59,8 @@ export function createPeerConnection(opts: PeerOptions): AnyPC {
     iceCandidatePoolSize: 10,
   });
 
+  let remoteStream: any = null;
+
   pc.onicecandidate = (event: AnyPC) => {
     if (event.candidate) {
       opts.onIceCandidate(JSON.stringify(event.candidate));
@@ -62,8 +68,23 @@ export function createPeerConnection(opts: PeerOptions): AnyPC {
   };
 
   pc.ontrack = (event: AnyPC) => {
-    const stream = event.streams?.[0];
-    if (stream) opts.onTrack(stream as MediaStream);
+    if (event.streams && event.streams[0]) {
+      opts.onTrack(event.streams[0]);
+      return;
+    }
+    if (event.track) {
+      if (!remoteStream) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { MediaStream } = require('./index');
+        remoteStream = new MediaStream();
+      }
+      try {
+        remoteStream.addTrack(event.track);
+      } catch {
+        // ignore
+      }
+      opts.onTrack(remoteStream);
+    }
   };
 
   pc.onconnectionstatechange = () => {

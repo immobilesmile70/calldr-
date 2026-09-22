@@ -35,6 +35,23 @@ if (Platform.OS !== 'web') {
 }
 
 
+function RemoteAudioWeb({ stream }: { stream: MediaStream | null }) {
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+
+  React.useEffect(() => {
+    if (audioRef.current && stream) {
+      audioRef.current.srcObject = stream;
+      audioRef.current.play().catch(() => {});
+    }
+  }, [stream]);
+
+  if (Platform.OS !== 'web' || !stream) return null;
+
+  return (
+    <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }} />
+  );
+}
+
 const LOCAL_PREVIEW_SIZE = 100;
 
 export default function ActiveCallScreen() {
@@ -56,14 +73,22 @@ export default function ActiveCallScreen() {
   const releaseMediaRef = React.useRef(media.releaseMedia);
   releaseMediaRef.current = media.releaseMedia;
 
+  const isCallee = role === 'callee' || (room && user?.uid && room.calleeUid === user.uid);
+
+  const cleanIncomingIfCallee = useCallback(() => {
+    if (user?.uid && isCallee) {
+      deleteIncoming(user.uid).catch(() => {});
+    }
+  }, [user?.uid, isCallee]);
+
   const handleExpire = useCallback(() => {
     endCall('timeout');
     releaseMediaRef.current();
-    if (user?.uid) deleteIncoming(user.uid).catch(() => {});
+    cleanIncomingIfCallee();
     if (Platform.OS === 'android' && roomId) dismissCallNotification(roomId).catch(() => {});
     dismissOngoingCallNotification().catch(() => {});
     router.replace('/(main)/home');
-  }, [endCall, user?.uid, roomId]);
+  }, [endCall, cleanIncomingIfCallee, roomId]);
 
   useCallTimer(
     room?.answeredAt,
@@ -82,7 +107,7 @@ export default function ActiveCallScreen() {
     onConnectionStateChange: (_state) => {},
     onEnd: () => {
       releaseMediaRef.current();
-      if (user?.uid) deleteIncoming(user.uid).catch(() => {});
+      cleanIncomingIfCallee();
       if (Platform.OS === 'android' && roomId) dismissCallNotification(roomId).catch(() => {});
       dismissOngoingCallNotification().catch(() => {});
       router.replace('/(main)/home');
@@ -94,12 +119,12 @@ export default function ActiveCallScreen() {
     if (!room) return;
     if (room.state === 'ended' || room.state === 'declined' || room.state === 'cancelled') {
       releaseMediaRef.current();
-      if (user?.uid) deleteIncoming(user.uid).catch(() => {});
+      cleanIncomingIfCallee();
       if (Platform.OS === 'android' && roomId) dismissCallNotification(roomId).catch(() => {});
       dismissOngoingCallNotification().catch(() => {});
       router.replace('/(main)/home');
     }
-  }, [room?.state, user?.uid, roomId]);
+  }, [room?.state, cleanIncomingIfCallee, roomId]);
 
   // Show ongoing notification when call becomes active
   useEffect(() => {
@@ -112,21 +137,21 @@ export default function ActiveCallScreen() {
   useEffect(() => {
     return () => {
       releaseMediaRef.current();
-      if (user?.uid) deleteIncoming(user.uid).catch(() => {});
+      cleanIncomingIfCallee();
       if (Platform.OS === 'android' && roomId) dismissCallNotification(roomId).catch(() => {});
       dismissOngoingCallNotification().catch(() => {});
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, user?.uid]);
+  }, [roomId, cleanIncomingIfCallee]);
 
   const handleEndCall = useCallback(() => {
     endCall(user?.uid ?? 'unknown');
     releaseMediaRef.current();
-    if (user?.uid) deleteIncoming(user.uid).catch(() => {});
+    cleanIncomingIfCallee();
     if (Platform.OS === 'android' && roomId) dismissCallNotification(roomId).catch(() => {});
     dismissOngoingCallNotification().catch(() => {});
     router.replace('/(main)/home');
-  }, [endCall, user?.uid, roomId]);
+  }, [endCall, cleanIncomingIfCallee, roomId]);
 
   const handleMute = useCallback(() => {
     media.toggleMic();
@@ -144,6 +169,7 @@ export default function ActiveCallScreen() {
 
   return (
     <View style={styles.fullscreen}>
+      <RemoteAudioWeb stream={media.remoteStream} />
       {/* Remote video / avatar background */}
       {isVideo && media.remoteStream && VideoRenderer ? (
         <VideoRenderer

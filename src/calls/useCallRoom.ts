@@ -62,8 +62,8 @@ export function useCallRoom(
         // ignore
       }
       // Cleanup ICE and incoming
-      if (room?.calleeUid) {
-        deleteIncoming(room.calleeUid).catch(() => {});
+      if (room?.calleeUid === myUid && myUid) {
+        deleteIncoming(myUid).catch(() => {});
       }
       if (roomId) {
         deleteIce(roomId).catch(() => {});

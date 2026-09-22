@@ -62,6 +62,8 @@ export function useSignaling({
   onConnectionStateChangeRef.current = onConnectionStateChange;
   const onEndRef = useRef(onEnd);
   onEndRef.current = onEnd;
+  const localStreamRef = useRef(localStream);
+  localStreamRef.current = localStream;
 
   const initPeer = useCallback(async () => {
     if (!roomId) return;
@@ -113,16 +115,39 @@ export function useSignaling({
     pcRef.current = pc;
     iceQueueRef.current = new IceCandidateQueue(pc);
 
-    // Add local tracks if already available
-    if (localStream) {
-      for (const track of localStream.getTracks()) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        pc.addTrack(track as any, localStream as any);
+    const addTracksToPc = (targetPc: any, stream: MediaStream | null) => {
+      if (!targetPc || !stream) return;
+      try {
+        const senders = typeof targetPc.getSenders === 'function' ? targetPc.getSenders() : [];
+        for (const track of stream.getTracks()) {
+          const existing = senders.find((s: any) => s.track?.kind === track.kind || s.track?.id === track.id);
+          if (!existing && typeof targetPc.addTrack === 'function') {
+            targetPc.addTrack(track as any, stream as any);
+          }
+        }
+      } catch (err) {
+        console.warn('[WebRTC] addTracksToPc error:', err);
       }
-    }
+    };
+
+    const waitForLocalStream = async (timeoutMs = 6000): Promise<MediaStream | null> => {
+      if (localStreamRef.current) return localStreamRef.current;
+      const start = Date.now();
+      while (!localStreamRef.current && Date.now() - start < timeoutMs) {
+        if (isClosingRef.current) return null;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return localStreamRef.current;
+    };
 
     if (isCaller) {
-      // Caller creates offer
+      // Caller waits for localStream so offer contains audio/video tracks
+      const stream = await waitForLocalStream();
+      if (isClosingRef.current || !pcRef.current) return;
+      if (stream) {
+        addTracksToPc(pc, stream);
+      }
+
       const offer = await pc.createOffer({});
       await pc.setLocalDescription(offer);
       await writeOffer(roomId, JSON.stringify(offer));
@@ -145,8 +170,14 @@ export function useSignaling({
       const remotePc = pcRef.current;
       const queue = iceQueueRef.current!;
 
-      // Callee: read offer, create answer
+      // Callee: read offer, create answer (with local tracks attached!)
       if (!isCaller && updatedRoom.offer && !remotePc.remoteDescription) {
+        const stream = await waitForLocalStream();
+        if (isClosingRef.current || !pcRef.current) return;
+        if (stream) {
+          addTracksToPc(remotePc, stream);
+        }
+
         const offerDesc = JSON.parse(updatedRoom.offer) as RTCSessionDescriptionInit;
         await remotePc.setRemoteDescription(offerDesc);
         await queue.flush();

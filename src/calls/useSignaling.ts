@@ -65,10 +65,20 @@ export function useSignaling({
   const localStreamRef = useRef(localStream);
   localStreamRef.current = localStream;
 
+  const hasProcessedOfferRef = useRef(false);
+  const hasProcessedAnswerRef = useRef(false);
+  const isProcessingOfferRef = useRef(false);
+  const isProcessingAnswerRef = useRef(false);
+
   const initPeer = useCallback(async () => {
     if (!roomId) return;
     const idToken = await getIdToken();
     if (!idToken) return;
+
+    hasProcessedOfferRef.current = false;
+    hasProcessedAnswerRef.current = false;
+    isProcessingOfferRef.current = false;
+    isProcessingAnswerRef.current = false;
 
     const iceServers = await fetchIceServers(idToken);
 
@@ -171,29 +181,73 @@ export function useSignaling({
       const queue = iceQueueRef.current!;
 
       // Callee: read offer, create answer (with local tracks attached!)
-      if (!isCaller && updatedRoom.offer && !remotePc.remoteDescription) {
-        const stream = await waitForLocalStream();
-        if (isClosingRef.current || !pcRef.current) return;
-        if (stream) {
-          addTracksToPc(remotePc, stream);
+      if (
+        !isCaller &&
+        updatedRoom.offer &&
+        !hasProcessedOfferRef.current &&
+        !isProcessingOfferRef.current
+      ) {
+        if (remotePc.signalingState !== 'stable') {
+          return;
         }
+        isProcessingOfferRef.current = true;
+        try {
+          const stream = await waitForLocalStream();
+          if (isClosingRef.current || !pcRef.current) return;
+          if (stream) {
+            addTracksToPc(remotePc, stream);
+          }
 
-        const offerDesc = JSON.parse(updatedRoom.offer) as RTCSessionDescriptionInit;
-        await remotePc.setRemoteDescription(offerDesc);
-        await queue.flush();
-        const answer = await remotePc.createAnswer();
-        await remotePc.setLocalDescription(answer);
-        await writeAnswer(roomId, JSON.stringify(answer));
-        await setCallState(roomId, 'active');
-        await applyBitrateConstraints(remotePc, updatedRoom.video);
+          if (remotePc.signalingState === 'stable') {
+            const offerDesc = JSON.parse(updatedRoom.offer) as RTCSessionDescriptionInit;
+            await remotePc.setRemoteDescription(offerDesc);
+            hasProcessedOfferRef.current = true;
+            await queue.flush();
+            const answer = await remotePc.createAnswer();
+            await remotePc.setLocalDescription(answer);
+            await writeAnswer(roomId, JSON.stringify(answer));
+            await setCallState(roomId, 'active');
+            await applyBitrateConstraints(remotePc, updatedRoom.video);
+          }
+        } catch (err: any) {
+          if (err?.name === 'InvalidStateError' || err?.message?.includes('Called in wrong state')) {
+            console.warn('[WebRTC] Offer setRemoteDescription skipped due to state:', remotePc.signalingState);
+          } else {
+            console.error('[WebRTC] Failed to handle offer:', err);
+          }
+        } finally {
+          isProcessingOfferRef.current = false;
+        }
       }
 
       // Caller: read answer
-      if (isCaller && updatedRoom.answer && !remotePc.remoteDescription) {
-        const answerDesc = JSON.parse(updatedRoom.answer) as RTCSessionDescriptionInit;
-        await remotePc.setRemoteDescription(answerDesc);
-        await queue.flush();
-        await applyBitrateConstraints(remotePc, updatedRoom.video);
+      if (
+        isCaller &&
+        updatedRoom.answer &&
+        !hasProcessedAnswerRef.current &&
+        !isProcessingAnswerRef.current
+      ) {
+        if (remotePc.signalingState !== 'have-local-offer') {
+          return;
+        }
+        isProcessingAnswerRef.current = true;
+        try {
+          const answerDesc = JSON.parse(updatedRoom.answer) as RTCSessionDescriptionInit;
+          if (remotePc.signalingState === 'have-local-offer') {
+            await remotePc.setRemoteDescription(answerDesc);
+            hasProcessedAnswerRef.current = true;
+            await queue.flush();
+            await applyBitrateConstraints(remotePc, updatedRoom.video);
+          }
+        } catch (err: any) {
+          if (err?.name === 'InvalidStateError' || err?.message?.includes('Called in wrong state')) {
+            console.warn('[WebRTC] Answer setRemoteDescription skipped due to state:', remotePc.signalingState);
+          } else {
+            console.error('[WebRTC] Failed to set remote answer:', err);
+          }
+        } finally {
+          isProcessingAnswerRef.current = false;
+        }
       }
 
       // Both sides: process new ICE candidates
@@ -208,12 +262,16 @@ export function useSignaling({
       // ICE restart: callee receives new offer (iceGen bumped)
       if (!isCaller && updatedRoom.iceGen !== undefined && updatedRoom.iceGen > iceGenRef.current) {
         iceGenRef.current = updatedRoom.iceGen;
-        if (updatedRoom.offer && remotePc.remoteDescription) {
-          const newOffer = JSON.parse(updatedRoom.offer) as RTCSessionDescriptionInit;
-          await remotePc.setRemoteDescription(newOffer);
-          const newAnswer = await remotePc.createAnswer();
-          await remotePc.setLocalDescription(newAnswer);
-          await writeAnswer(roomId, JSON.stringify(newAnswer));
+        if (updatedRoom.offer && remotePc.remoteDescription && remotePc.signalingState === 'stable') {
+          try {
+            const newOffer = JSON.parse(updatedRoom.offer) as RTCSessionDescriptionInit;
+            await remotePc.setRemoteDescription(newOffer);
+            const newAnswer = await remotePc.createAnswer();
+            await remotePc.setLocalDescription(newAnswer);
+            await writeAnswer(roomId, JSON.stringify(newAnswer));
+          } catch (err) {
+            console.warn('[WebRTC] ICE restart failed:', err);
+          }
         }
       }
     });

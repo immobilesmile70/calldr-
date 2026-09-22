@@ -23,11 +23,15 @@ import {
 import { colors, spacing, fontSize, radii } from '@/theme/tokens';
 
 // Platform-aware VideoRenderer
-let VideoRenderer: React.ComponentType<{ streamURL?: string; objectFit?: string; style?: object }> | null = null;
+let VideoRenderer: React.ComponentType<any> | null = null;
 if (Platform.OS !== 'web') {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   VideoRenderer = require('react-native-webrtc').RTCView;
+} else {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  VideoRenderer = require('@/webrtc/VideoRendererWeb').VideoRendererWeb;
 }
+
 
 const LOCAL_PREVIEW_SIZE = 100;
 
@@ -129,6 +133,7 @@ export default function ActiveCallScreen() {
       {isVideo && media.remoteStream && VideoRenderer ? (
         <VideoRenderer
           streamURL={(media.remoteStream as { toURL?: () => string }).toURL?.() ?? ''}
+          stream={media.remoteStream}
           objectFit="cover"
           style={StyleSheet.absoluteFillObject}
         />
@@ -167,6 +172,8 @@ export default function ActiveCallScreen() {
           <View style={styles.localPreview}>
             <VideoRenderer
               streamURL={(media.localStream as { toURL?: () => string }).toURL?.() ?? ''}
+              stream={media.localStream}
+              mirror
               objectFit="cover"
               style={styles.localPreviewInner}
             />

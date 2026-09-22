@@ -16,7 +16,7 @@ import * as Google from '@react-native-google-signin/google-signin';
 import { Wordmark } from '@/ui/Wordmark';
 import { PillInput } from '@/ui/PillInput';
 import { PillButton } from '@/ui/PillButton';
-import { signInWithToken } from '@/firebase/auth';
+import { signInWithToken, signInWithGoogleWeb } from '@/firebase/auth';
 import { colors, spacing, fontSize } from '@/theme/tokens';
 
 const API_URL =
@@ -24,9 +24,11 @@ const API_URL =
     ? '/api'
     : (process.env.EXPO_PUBLIC_API_URL ?? '') + '/api';
 
-Google.GoogleSignin.configure({
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-});
+if (Platform.OS !== 'web') {
+  Google.GoogleSignin.configure({
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
+}
 
 export default function SignupScreen() {
   const [email, setEmail] = useState('');
@@ -79,19 +81,32 @@ export default function SignupScreen() {
     setGoogleLoading(true);
     clearErrors();
     try {
-      await Google.GoogleSignin.hasPlayServices();
-      const userInfo = await Google.GoogleSignin.signIn();
-      const idToken = userInfo.data?.idToken;
-      if (!idToken) throw new Error('No ID token');
+      if (Platform.OS === 'web') {
+        const user = await signInWithGoogleWeb();
+        const idToken = await user.getIdToken();
+        const resp = await fetch(`${API_URL}/auth/google`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        });
+        const data = await resp.json() as { ok: boolean; data?: { customToken: string }; error?: string };
+        if (!data.ok) { setGeneralError(data.error ?? 'Google sign in failed.'); return; }
+        await signInWithToken(data.data!.customToken);
+      } else {
+        await Google.GoogleSignin.hasPlayServices();
+        const userInfo = await Google.GoogleSignin.signIn();
+        const idToken = userInfo.data?.idToken;
+        if (!idToken) throw new Error('No ID token');
 
-      const resp = await fetch(`${API_URL}/auth/google`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
-      });
-      const data = await resp.json() as { ok: boolean; data?: { customToken: string }; error?: string };
-      if (!data.ok) { setGeneralError(data.error ?? 'Google sign in failed.'); return; }
-      await signInWithToken(data.data!.customToken);
+        const resp = await fetch(`${API_URL}/auth/google`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        });
+        const data = await resp.json() as { ok: boolean; data?: { customToken: string }; error?: string };
+        if (!data.ok) { setGeneralError(data.error ?? 'Google sign in failed.'); return; }
+        await signInWithToken(data.data!.customToken);
+      }
     } catch (err) {
       if ((err as { code?: string }).code !== '-5') { // -5 = user cancelled
         setGeneralError('Google sign in failed. Please try again.');
@@ -201,6 +216,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing['2xl'],
     gap: spacing.md,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
   },
   back: { alignSelf: 'flex-start', padding: spacing.xs, marginBottom: spacing.sm },
   wordmark: { marginBottom: spacing.sm },

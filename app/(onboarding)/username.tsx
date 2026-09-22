@@ -114,6 +114,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing['2xl'],
     gap: spacing.md,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
   },
   spacer: { flex: 1, minHeight: spacing.xl },
   hero: {

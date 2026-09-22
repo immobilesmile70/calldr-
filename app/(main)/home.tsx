@@ -444,7 +444,13 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  container: { flex: 1, paddingHorizontal: spacing.md },
+  container: {
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    maxWidth: 540,
+    width: '100%',
+    alignSelf: 'center',
+  },
   header: { paddingVertical: spacing.md, gap: spacing.xs },
   wordmark: {},
   greeting: { fontSize: fontSize.sm, color: colors.muted },

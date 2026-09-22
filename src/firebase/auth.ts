@@ -1,6 +1,8 @@
 import {
   getAuth,
   signInWithCustomToken,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut as _signOut,
   onAuthStateChanged,
   User,
@@ -20,6 +22,13 @@ export const auth = createAuth();
 /** Sign in with a custom token returned from our API */
 export async function signInWithToken(customToken: string): Promise<User> {
   const cred = await signInWithCustomToken(auth, customToken);
+  return cred.user;
+}
+
+/** Sign in with Google on Web using Firebase Popup */
+export async function signInWithGoogleWeb(): Promise<User> {
+  const provider = new GoogleAuthProvider();
+  const cred = await signInWithPopup(auth, provider);
   return cred.user;
 }
 

@@ -7,6 +7,12 @@ import { AppState, Platform } from 'react-native';
 import { AuthContext, useAuthProvider } from '@/lib/useAuth';
 import { watchIncoming, deleteIncoming, setCallState } from '@/firebase/rtdb';
 import { showIncomingCallNotification, dismissCallNotification } from '@/notifications/notifee';
+import {
+  showNativeIncomingCall,
+  dismissNativeIncomingCall,
+  getInitialCallAction,
+  subscribeCallAction,
+} from '@/notifications/nativeCall';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -134,8 +140,11 @@ export default function RootLayout() {
               roomId: lastHandledRoomIdRef.current,
             });
           }
-          if (Platform.OS === 'android' && lastHandledRoomIdRef.current) {
-            dismissCallNotification(lastHandledRoomIdRef.current).catch(() => {});
+          if (Platform.OS === 'android') {
+            dismissNativeIncomingCall().catch(() => {});
+            if (lastHandledRoomIdRef.current) {
+              dismissCallNotification(lastHandledRoomIdRef.current).catch(() => {});
+            }
           }
           lastHandledRoomIdRef.current = null;
           return;
@@ -144,8 +153,11 @@ export default function RootLayout() {
         // Stale call (> 45s) — clean up and ignore
         if (incoming.ts && Date.now() - incoming.ts > 45_000) {
           deleteIncoming(user.uid).catch(() => {});
-          if (Platform.OS === 'android' && incoming.roomId) {
-            dismissCallNotification(incoming.roomId).catch(() => {});
+          if (Platform.OS === 'android') {
+            dismissNativeIncomingCall().catch(() => {});
+            if (incoming.roomId) {
+              dismissCallNotification(incoming.roomId).catch(() => {});
+            }
           }
           return;
         }
@@ -158,16 +170,15 @@ export default function RootLayout() {
 
         lastHandledRoomIdRef.current = incoming.roomId;
 
-        // On Android: ALWAYS trigger native call notification (full-screen heads-up with ringtone & vibration)
+        // On Android: Trigger system native CallStyle notification (authentic green Answer & red Decline buttons)
         if (Platform.OS === 'android') {
-          showIncomingCallNotification({
+          showNativeIncomingCall({
             roomId: incoming.roomId,
             callerName: incoming.callerName,
             video: incoming.video,
             durationSec: incoming.durationSec,
-            calleeUid: user.uid,
           }).catch((err) => {
-            console.warn('[Notifee] showIncomingCallNotification error:', err);
+            console.warn('[NativeCall] showIncomingCall error:', err);
           });
         }
 
@@ -238,6 +249,59 @@ export default function RootLayout() {
 
     if (!notifee) return;
 
+    // Check native Android initial call action (e.g. launched via Green Answer button)
+    getInitialCallAction().then((initial) => {
+      if (!initial || !initial.roomId) return;
+      lastHandledRoomIdRef.current = initial.roomId;
+      deleteIncoming(user.uid).catch(() => {});
+      dismissNativeIncomingCall().catch(() => {});
+      if (initial.action === 'answer') {
+        router.replace({
+          pathname: '/(call)/active',
+          params: {
+            roomId: initial.roomId,
+            role: 'callee',
+            contactName: initial.callerName || 'Caller',
+            video: String(initial.video ?? false),
+            durationSec: String(initial.durationSec ?? 300),
+          },
+        });
+      } else if (initial.action === 'incoming') {
+        router.push({
+          pathname: '/(call)/incoming',
+          params: {
+            roomId: initial.roomId,
+            callerName: initial.callerName || 'Caller',
+            video: String(initial.video ?? false),
+            durationSec: String(initial.durationSec ?? 300),
+          },
+        });
+      }
+    }).catch(() => {});
+
+    // Listen to native CallStyle broadcast actions (Answer / Decline)
+    const unsubNativeCallAction = subscribeCallAction((event) => {
+      if (event.action === 'answer' && event.roomId) {
+        lastHandledRoomIdRef.current = event.roomId;
+        deleteIncoming(user.uid).catch(() => {});
+        dismissNativeIncomingCall().catch(() => {});
+        router.replace({
+          pathname: '/(call)/active',
+          params: {
+            roomId: event.roomId,
+            role: 'callee',
+            contactName: event.callerName || 'Caller',
+            video: String(event.video ?? false),
+            durationSec: String(event.durationSec ?? 300),
+          },
+        });
+      } else if (event.action === 'decline' && event.roomId) {
+        setCallState(event.roomId, 'declined', { endedBy: user.uid }).catch(() => {});
+        deleteIncoming(user.uid).catch(() => {});
+        dismissNativeIncomingCall().catch(() => {});
+      }
+    });
+
     // Check if app was launched from a notification
     notifee.getInitialNotification().then((initial: any) => {
       if (!initial) return;
@@ -300,6 +364,7 @@ export default function RootLayout() {
     });
 
     return () => {
+      unsubNativeCallAction();
       unsubForeground?.();
     };
   }, [user]);

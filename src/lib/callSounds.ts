@@ -38,21 +38,27 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
+import { startNativeRingback, stopNativeRingback } from '@/notifications/nativeCall';
+
 // Active tone nodes tracking
 let activeRingbackInterval: ReturnType<typeof setInterval> | null = null;
 let activeIncomingInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Start Outgoing Ringback Tone:
- * On native: plays the telephony ringback tone through InCallManager.
+ * On Android: plays authentic telephony supervisory ringback ("bzzrrr... bzzrrr...") via ToneGenerator.
  * On web: standard 440 Hz + 480 Hz dual-frequency tone with 1.5s on, 2.5s off cadence.
  */
 export function startRingbackTone(): void {
   stopRingbackTone();
 
+  if (Platform.OS === 'android') {
+    startNativeRingback().catch(() => {});
+    return;
+  }
+
   if (Platform.OS !== 'web' && InCallManager) {
     try {
-      InCallManager.start({ media: 'audio', ringback: '_DEFAULT_' });
       InCallManager.startRingback('_DEFAULT_');
       return;
     } catch (err) {
@@ -103,7 +109,9 @@ export function startRingbackTone(): void {
 
 /** Stop Outgoing Ringback Tone */
 export function stopRingbackTone(): void {
-  if (Platform.OS !== 'web' && InCallManager) {
+  if (Platform.OS === 'android') {
+    stopNativeRingback().catch(() => {});
+  } else if (Platform.OS !== 'web' && InCallManager) {
     try {
       InCallManager.stopRingback();
     } catch {

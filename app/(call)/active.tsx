@@ -29,6 +29,13 @@ import {
   dismissOngoingCallNotification,
   dismissCallNotification,
 } from '@/notifications/notifee';
+import {
+  showNativeOngoingCall,
+  dismissNativeOngoingCall,
+  dismissNativeIncomingCall,
+  dismissAllNativeCallNotifications,
+  subscribeCallAction,
+} from '@/notifications/nativeCall';
 import { deleteIncoming } from '@/firebase/rtdb';
 import { colors, spacing, fontSize, radii } from '@/theme/tokens';
 import {
@@ -370,6 +377,7 @@ export default function ActiveCallScreen() {
     cleanIncomingIfCallee();
     if (Platform.OS === 'android' && roomId) dismissCallNotification(roomId).catch(() => {});
     dismissOngoingCallNotification().catch(() => {});
+    dismissAllNativeCallNotifications().catch(() => {});
     router.replace('/(main)/home');
   }, [endCall, cleanIncomingIfCallee, roomId]);
 
@@ -389,6 +397,7 @@ export default function ActiveCallScreen() {
     cleanIncomingIfCallee();
     if (Platform.OS === 'android' && roomId) dismissCallNotification(roomId).catch(() => {});
     dismissOngoingCallNotification().catch(() => {});
+    dismissAllNativeCallNotifications().catch(() => {});
     router.replace('/(main)/home');
   }, [endCall, cleanIncomingIfCallee, roomId]);
 
@@ -432,11 +441,12 @@ export default function ActiveCallScreen() {
       cleanIncomingIfCallee();
       if (Platform.OS === 'android' && roomId) dismissCallNotification(roomId).catch(() => {});
       dismissOngoingCallNotification().catch(() => {});
+      dismissAllNativeCallNotifications().catch(() => {});
       router.replace('/(main)/home');
     },
   });
 
-  // Outgoing ringback & pickup tone lifecycle
+  // Outgoing ringback & pickup tone lifecycle + ensure audio routing on connect
   useEffect(() => {
     if (room?.state === 'ringing' && isCaller) {
       startRingbackTone();
@@ -447,8 +457,15 @@ export default function ActiveCallScreen() {
     if (room?.state === 'active') {
       playPickupChime();
       hapticPickup();
+      media.ensureAudioRouting();
+      showNativeOngoingCall({
+        contactName: contactName ?? 'Call',
+        video: resolvedIsVideo,
+        startTimeMs: room?.answeredAt || Date.now(),
+        roomId: roomId ?? undefined,
+      }).catch(() => {});
     }
-  }, [room?.state, isCaller]);
+  }, [room?.state, isCaller, media, contactName, resolvedIsVideo, roomId, room?.answeredAt]);
 
   // Watch for remote hang-up
   useEffect(() => {
@@ -461,9 +478,20 @@ export default function ActiveCallScreen() {
       cleanIncomingIfCallee();
       if (Platform.OS === 'android' && roomId) dismissCallNotification(roomId).catch(() => {});
       dismissOngoingCallNotification().catch(() => {});
+      dismissAllNativeCallNotifications().catch(() => {});
       router.replace('/(main)/home');
     }
   }, [room?.state, cleanIncomingIfCallee, roomId]);
+
+  // Listen for native notification actions (e.g. status bar red Hang Up button)
+  useEffect(() => {
+    const unsub = subscribeCallAction((event) => {
+      if (event.action === 'hangup' && (!event.roomId || event.roomId === roomId)) {
+        handleEndCall();
+      }
+    });
+    return unsub;
+  }, [roomId, handleEndCall]);
 
   // Network loss auto cut after 10s
   useEffect(() => {
@@ -489,6 +517,7 @@ export default function ActiveCallScreen() {
       cleanIncomingIfCallee();
       if (Platform.OS === 'android' && roomId) dismissCallNotification(roomId).catch(() => {});
       dismissOngoingCallNotification().catch(() => {});
+      dismissAllNativeCallNotifications().catch(() => {});
     };
   }, [roomId, cleanIncomingIfCallee]);
 

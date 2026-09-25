@@ -13,6 +13,7 @@ import { PillButton } from '@/ui/PillButton';
 import { Wordmark } from '@/ui/Wordmark';
 import { setCallState, deleteIncoming, watchCallRoom } from '@/firebase/rtdb';
 import { dismissCallNotification } from '@/notifications/notifee';
+import { dismissNativeIncomingCall } from '@/notifications/nativeCall';
 import { useAuth } from '@/lib/useAuth';
 import { colors, spacing, fontSize, radii } from '@/theme/tokens';
 
@@ -60,6 +61,7 @@ export default function IncomingCallScreen() {
           deleteIncoming(user.uid).catch(() => {});
         }
         if (Platform.OS === 'android') {
+          dismissNativeIncomingCall().catch(() => {});
           dismissCallNotification(roomId).catch(() => {});
         }
         router.replace('/(main)/home');
@@ -76,8 +78,9 @@ export default function IncomingCallScreen() {
     if (user?.uid) {
       deleteIncoming(user.uid).catch(() => {});
     }
-    if (Platform.OS === 'android' && roomId) {
-      dismissCallNotification(roomId).catch(() => {});
+    if (Platform.OS === 'android') {
+      dismissNativeIncomingCall().catch(() => {});
+      if (roomId) dismissCallNotification(roomId).catch(() => {});
     }
     if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({
@@ -106,8 +109,9 @@ export default function IncomingCallScreen() {
     if (user?.uid) {
       await deleteIncoming(user.uid).catch(() => {});
     }
-    if (Platform.OS === 'android' && roomId) {
-      dismissCallNotification(roomId).catch(() => {});
+    if (Platform.OS === 'android') {
+      dismissNativeIncomingCall().catch(() => {});
+      if (roomId) dismissCallNotification(roomId).catch(() => {});
     }
     if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.controller.postMessage({

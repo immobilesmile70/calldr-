@@ -69,6 +69,8 @@ export function createPeerConnection(opts: PeerOptions): AnyPC {
   const pc: AnyPC = new RTCPeerConnection({
     iceServers: opts.iceServers,
     iceCandidatePoolSize: 10,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require',
   });
 
   let remoteStream: any = null;

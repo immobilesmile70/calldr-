@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import type { FirebaseMessagingTypes } from '@react-native-firebase/messaging';
+import { showNativeIncomingCall, dismissNativeIncomingCall } from './nativeCall';
 import { showIncomingCallNotification, dismissCallNotification } from './notifee';
 
 /**
@@ -27,13 +28,22 @@ export async function handleBackgroundFCM(
       const durationSecStr = typeof data['durationSec'] === 'string' ? data['durationSec'] : '300';
       const durationSec = parseInt(durationSecStr, 10);
       if (roomId && callerName) {
-        await showIncomingCallNotification({
-          roomId,
-          calleeUid,
-          callerName,
-          video,
-          durationSec,
-        });
+        if (Platform.OS === 'android') {
+          await showNativeIncomingCall({
+            roomId,
+            callerName,
+            video,
+            durationSec,
+          });
+        } else {
+          await showIncomingCallNotification({
+            roomId,
+            calleeUid,
+            callerName,
+            video,
+            durationSec,
+          });
+        }
       }
       break;
     }
@@ -41,6 +51,9 @@ export async function handleBackgroundFCM(
     case 'call_cancel': {
       const roomId = typeof data['roomId'] === 'string' ? data['roomId'] : undefined;
       if (roomId) {
+        if (Platform.OS === 'android') {
+          await dismissNativeIncomingCall();
+        }
         await dismissCallNotification(roomId);
       }
       break;

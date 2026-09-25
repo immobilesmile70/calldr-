@@ -254,6 +254,19 @@ export function useMedia(
     }
   }, []);
 
+  const ensureAudioRouting = useCallback(() => {
+    if (Platform.OS !== 'web' && InCallManager) {
+      try {
+        InCallManager.start({ media: video ? 'video' : 'audio' });
+        InCallManager.setMicrophoneMute(false);
+        InCallManager.setForceSpeakerphoneOn(speakerOn);
+        InCallManager.setSpeakerphoneOn(speakerOn);
+      } catch (err) {
+        console.warn('[useMedia] ensureAudioRouting error:', err);
+      }
+    }
+  }, [video, speakerOn]);
+
   const releaseMedia = useCallback(() => {
     const stream = localStreamRef.current;
     stream?.getTracks().forEach((t) => t.stop());
@@ -281,5 +294,6 @@ export function useMedia(
     handleFlipCamera,
     setRemote,
     releaseMedia,
+    ensureAudioRouting,
   };
 }

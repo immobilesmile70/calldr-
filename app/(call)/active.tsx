@@ -11,7 +11,9 @@ import {
   PanResponder,
   useWindowDimensions,
   Modal,
+  StatusBar as RNStatusBar,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '@/ui/Avatar';
@@ -21,6 +23,7 @@ import { useCallRoom } from '@/calls/useCallRoom';
 import { useCallTimer } from '@/calls/useTimer';
 import { useMedia } from '@/calls/useMedia';
 import { useSignaling } from '@/calls/useSignaling';
+import { enableAutoPip, subscribePipStatus } from '@/lib/pip';
 import {
   showOngoingCallNotification,
   dismissOngoingCallNotification,
@@ -269,6 +272,37 @@ export default function ActiveCallScreen() {
     }
   }, [controlsVisible, controlsOpacity, resetControlsTimer]);
 
+  // Fullscreen video mode: hide status bar on video calls
+  useEffect(() => {
+    if (resolvedIsVideo) {
+      RNStatusBar.setHidden(true, 'fade');
+    }
+    return () => {
+      RNStatusBar.setHidden(false, 'fade');
+    };
+  }, [resolvedIsVideo]);
+
+  // Native Android PiP (Picture-in-Picture)
+  const [isNativePip, setIsNativePip] = useState(false);
+
+  useEffect(() => {
+    if (resolvedIsVideo) {
+      enableAutoPip(true).catch(() => {});
+    }
+
+    const unsub = subscribePipStatus((inPip) => {
+      setIsNativePip(inPip);
+      if (inPip) {
+        setControlsVisible(false);
+      }
+    });
+
+    return () => {
+      enableAutoPip(false).catch(() => {});
+      unsub();
+    };
+  }, [resolvedIsVideo]);
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -488,6 +522,7 @@ export default function ActiveCallScreen() {
 
   return (
     <View style={styles.fullscreen}>
+      <StatusBar hidden={resolvedIsVideo} style="light" />
       <RemoteAudioWeb stream={media.remoteStream} />
 
       {/* Tap background to toggle controls visibility */}
@@ -517,14 +552,23 @@ export default function ActiveCallScreen() {
         <Animated.View
           style={[
             styles.pipContainer,
-            controlsVisible ? styles.pipShadow : null,
-            {
-              width: pipWidthAnim,
-              height: pipHeightAnim,
-              transform: pan.getTranslateTransform(),
-            },
+            controlsVisible && !isNativePip ? styles.pipShadow : null,
+            isNativePip
+              ? {
+                  position: 'absolute',
+                  width: Math.min(110, Math.round(screenWidth * 0.32)),
+                  height: Math.min(147, Math.round(screenWidth * 0.32 * 1.333)),
+                  bottom: 12,
+                  right: 12,
+                  zIndex: 999,
+                }
+              : {
+                  width: pipWidthAnim,
+                  height: pipHeightAnim,
+                  transform: pan.getTranslateTransform(),
+                },
           ]}
-          {...panResponder.panHandlers}
+          {...(isNativePip ? {} : panResponder.panHandlers)}
         >
           <VideoRenderer
             key={`pip_${pipStream.id}_${pipStream.getVideoTracks?.()?.length ?? 0}`}
@@ -536,137 +580,141 @@ export default function ActiveCallScreen() {
             style={styles.pipInner}
           />
 
-          {/* Corner Flip Camera Button on PiP */}
-          <Animated.View
-            style={[styles.pipFlipBtnWrapper, { opacity: controlsOpacity }]}
-            pointerEvents={controlsVisible ? 'auto' : 'none'}
-          >
-            <TouchableOpacity
-              style={styles.pipFlipBtn}
-              onPress={(e) => {
-                e.stopPropagation?.();
-                resetControlsTimer();
-                media.handleFlipCamera();
-              }}
-              accessibilityLabel="Flip camera"
-              activeOpacity={0.8}
+          {/* Corner Flip Camera Button on PiP (hidden in native PiP) */}
+          {!isNativePip && (
+            <Animated.View
+              style={[styles.pipFlipBtnWrapper, { opacity: controlsOpacity }]}
+              pointerEvents={controlsVisible ? 'auto' : 'none'}
             >
-              <Ionicons name="camera-reverse" size={16} color="#FFFFFF" />
-            </TouchableOpacity>
-          </Animated.View>
+              <TouchableOpacity
+                style={styles.pipFlipBtn}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  resetControlsTimer();
+                  media.handleFlipCamera();
+                }}
+                accessibilityLabel="Flip camera"
+                activeOpacity={0.8}
+              >
+                <Ionicons name="camera-reverse" size={16} color="#FFFFFF" />
+              </TouchableOpacity>
+            </Animated.View>
+          )}
         </Animated.View>
       )}
 
-      {/* Overlay UI (fades out with controlsVisible) */}
-      <SafeAreaView style={styles.overlay} pointerEvents="box-none">
-        {/* Top bar */}
-        <Animated.View
-          style={[styles.topBar, { opacity: controlsOpacity }]}
-          pointerEvents={controlsVisible ? 'auto' : 'none'}
-        >
-          {isActive && room?.answeredAt ? (
-            <CountdownPill
-              endsAtMs={room.answeredAt + durationSecNum * 1000}
-              nowMs={Date.now() + serverOffset}
-              contactName={contactName ?? ''}
-            />
-          ) : (
-            <View style={styles.statusPill}>
-              <Text style={styles.statusText}>
-                {isConnecting ? 'Calling...' : 'Connected'}
-              </Text>
-            </View>
-          )}
-
-          {/* Unstable connection badge */}
-          {isNetworkUnstable && !isNetworkLost && (
-            <View style={styles.unstablePill}>
-              <Ionicons name="warning-outline" size={13} color="#FBBF24" />
-              <Text style={styles.unstableText}>Poor network</Text>
-            </View>
-          )}
-        </Animated.View>
-
-        {/* Contact name (audio mode only) */}
-        {!resolvedIsVideo && (
+      {/* Overlay UI (fades out with controlsVisible, hidden in native PiP) */}
+      {!isNativePip && (
+        <SafeAreaView style={styles.overlay} pointerEvents="box-none">
+          {/* Top bar */}
           <Animated.View
-            style={{ opacity: controlsOpacity }}
+            style={[styles.topBar, { opacity: controlsOpacity }]}
             pointerEvents={controlsVisible ? 'auto' : 'none'}
           >
-            <Text style={styles.contactNameText}>{contactName}</Text>
-          </Animated.View>
-        )}
-
-        {/* Bottom controls */}
-        <Animated.View
-          style={[styles.controls, { opacity: controlsOpacity }]}
-          pointerEvents={controlsVisible ? 'auto' : 'none'}
-        >
-          {/* Mic Button + Flyout Chevron */}
-          <View style={styles.micBtnContainer}>
-            <TouchableOpacity
-              style={styles.controlBtn}
-              onPress={handleMute}
-              accessibilityLabel={media.micMuted ? 'Unmute microphone' : 'Mute microphone'}
-            >
-              <Ionicons
-                name={media.micMuted ? 'mic-off' : 'mic'}
-                size={24}
-                color={media.micMuted ? colors.danger : colors.text}
+            {isActive && room?.answeredAt ? (
+              <CountdownPill
+                endsAtMs={room.answeredAt + durationSecNum * 1000}
+                nowMs={Date.now() + serverOffset}
+                contactName={contactName ?? ''}
               />
-            </TouchableOpacity>
-            {media.audioDevices.length > 0 && (
-              <TouchableOpacity
-                style={styles.micChevronBadge}
-                onPress={() => {
-                  resetControlsTimer();
-                  setMicModalOpen(true);
-                }}
-                accessibilityLabel="Choose microphone"
-              >
-                <Ionicons name="chevron-up" size={12} color="#FFFFFF" />
-              </TouchableOpacity>
+            ) : (
+              <View style={styles.statusPill}>
+                <Text style={styles.statusText}>
+                  {isConnecting ? 'Calling...' : 'Connected'}
+                </Text>
+              </View>
             )}
-          </View>
 
-          {/* Speaker button */}
-          <TouchableOpacity
-            style={styles.controlBtn}
-            onPress={handleSpeakerToggle}
-            accessibilityLabel={media.speakerOn ? 'Switch to earpiece' : 'Switch to speaker'}
-          >
-            <Ionicons
-              name={media.speakerOn ? 'volume-high' : 'volume-medium'}
-              size={24}
-              color={colors.text}
-            />
-          </TouchableOpacity>
+            {/* Unstable connection badge */}
+            {isNetworkUnstable && !isNetworkLost && (
+              <View style={styles.unstablePill}>
+                <Ionicons name="warning-outline" size={13} color="#FBBF24" />
+                <Text style={styles.unstableText}>Poor network</Text>
+              </View>
+            )}
+          </Animated.View>
 
-          {/* Video Toggle (video mode only) */}
-          {resolvedIsVideo && (
-            <TouchableOpacity
-              style={styles.controlBtn}
-              onPress={handleCamToggle}
-              accessibilityLabel={media.camOff ? 'Turn camera on' : 'Turn camera off'}
+          {/* Contact name (audio mode only) */}
+          {!resolvedIsVideo && (
+            <Animated.View
+              style={{ opacity: controlsOpacity }}
+              pointerEvents={controlsVisible ? 'auto' : 'none'}
             >
-              <Ionicons
-                name={media.camOff ? 'videocam-off' : 'videocam'}
-                size={24}
-                color={media.camOff ? colors.danger : colors.text}
-              />
-            </TouchableOpacity>
+              <Text style={styles.contactNameText}>{contactName}</Text>
+            </Animated.View>
           )}
 
-          {/* End Call Button */}
-          <TouchableOpacity
-            style={[styles.controlBtn, styles.endBtn]}
-            onPress={handleEndCall}
-            accessibilityLabel="End call"
+          {/* Bottom controls */}
+          <Animated.View
+            style={[styles.controls, { opacity: controlsOpacity }]}
+            pointerEvents={controlsVisible ? 'auto' : 'none'}
           >
-            <Ionicons name="call" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </Animated.View>
-      </SafeAreaView>
+            {/* Mic Button + Flyout Chevron */}
+            <View style={styles.micBtnContainer}>
+              <TouchableOpacity
+                style={styles.controlBtn}
+                onPress={handleMute}
+                accessibilityLabel={media.micMuted ? 'Unmute microphone' : 'Mute microphone'}
+              >
+                <Ionicons
+                  name={media.micMuted ? 'mic-off' : 'mic'}
+                  size={24}
+                  color={media.micMuted ? colors.danger : colors.text}
+                />
+              </TouchableOpacity>
+              {media.audioDevices.length > 0 && (
+                <TouchableOpacity
+                  style={styles.micChevronBadge}
+                  onPress={() => {
+                    resetControlsTimer();
+                    setMicModalOpen(true);
+                  }}
+                  accessibilityLabel="Choose microphone"
+                >
+                  <Ionicons name="chevron-up" size={12} color="#FFFFFF" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Speaker button */}
+            <TouchableOpacity
+              style={styles.controlBtn}
+              onPress={handleSpeakerToggle}
+              accessibilityLabel={media.speakerOn ? 'Switch to earpiece' : 'Switch to speaker'}
+            >
+              <Ionicons
+                name={media.speakerOn ? 'volume-high' : 'volume-medium'}
+                size={24}
+                color={colors.text}
+              />
+            </TouchableOpacity>
+
+            {/* Video Toggle (video mode only) */}
+            {resolvedIsVideo && (
+              <TouchableOpacity
+                style={styles.controlBtn}
+                onPress={handleCamToggle}
+                accessibilityLabel={media.camOff ? 'Turn camera on' : 'Turn camera off'}
+              >
+                <Ionicons
+                  name={media.camOff ? 'videocam-off' : 'videocam'}
+                  size={24}
+                  color={media.camOff ? colors.danger : colors.text}
+                />
+              </TouchableOpacity>
+            )}
+
+            {/* End Call Button */}
+            <TouchableOpacity
+              style={[styles.controlBtn, styles.endBtn]}
+              onPress={handleEndCall}
+              accessibilityLabel="End call"
+            >
+              <Ionicons name="call" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </Animated.View>
+        </SafeAreaView>
+      )}
 
       {/* Microphone Selection Modal / Popover */}
       <Modal

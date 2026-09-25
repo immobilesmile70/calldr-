@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Alert,
   Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Wordmark } from '@/ui/Wordmark';
@@ -19,6 +20,7 @@ import { BottomSheet } from '@/ui/BottomSheet';
 import { CodeDisplay } from '@/ui/CodeDisplay';
 import { CodeInput } from '@/ui/CodeInput';
 import { LoadingSkeleton } from '@/ui/LoadingSkeleton';
+import { TimeWheelPicker } from '@/ui/TimeWheelPicker';
 import { useAuth } from '@/lib/useAuth';
 import { useConnections } from '@/lib/useConnections';
 import { getIdToken } from '@/firebase/auth';
@@ -47,9 +49,48 @@ export default function HomeScreen() {
   const [requestLoading, setRequestLoading] = useState(false);
 
   // Call sheet state
-  const [selectedDuration, setSelectedDuration] = useState<DurationMinutes>(15);
+  const [selectedDuration, setSelectedDuration] = useState<number>(15);
   const [selectedMode, setSelectedMode] = useState<'audio' | 'video'>('audio');
   const [callLoading, setCallLoading] = useState(false);
+
+  // Load remembered duration for contact or default
+  useEffect(() => {
+    if (!callSheetContact?.uid) return;
+    const loadSavedDuration = async () => {
+      try {
+        const contactKey = `@calldr:duration_${callSheetContact.uid}`;
+        const saved = await AsyncStorage.getItem(contactKey);
+        if (saved) {
+          const num = parseInt(saved, 10);
+          if (!isNaN(num) && num > 0) {
+            setSelectedDuration(num);
+            return;
+          }
+        }
+        const defaultSaved = await AsyncStorage.getItem('@calldr:duration_default');
+        if (defaultSaved) {
+          const num = parseInt(defaultSaved, 10);
+          if (!isNaN(num) && num > 0) {
+            setSelectedDuration(num);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+    loadSavedDuration();
+  }, [callSheetContact?.uid]);
+
+  const handleDurationChange = useCallback(
+    (minutes: number) => {
+      setSelectedDuration(minutes);
+      if (callSheetContact?.uid) {
+        AsyncStorage.setItem(`@calldr:duration_${callSheetContact.uid}`, String(minutes)).catch(() => {});
+        AsyncStorage.setItem('@calldr:duration_default', String(minutes)).catch(() => {});
+      }
+    },
+    [callSheetContact?.uid],
+  );
 
   const filteredContacts = useMemo(
     () =>
@@ -390,21 +431,10 @@ export default function HomeScreen() {
             </View>
 
             <Text style={styles.sheetLabel}>Duration</Text>
-            <View style={styles.pillRow}>
-              {DURATION_OPTIONS.map((d) => (
-                <TouchableOpacity
-                  key={d}
-                  style={[styles.optionPill, selectedDuration === d && styles.optionPillActive]}
-                  onPress={() => setSelectedDuration(d)}
-                  accessibilityLabel={`${d} minutes`}
-                  accessibilityState={{ selected: selectedDuration === d }}
-                >
-                  <Text style={[styles.optionPillLabel, selectedDuration === d && styles.optionPillLabelActive]}>
-                    {d}m
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TimeWheelPicker
+              value={selectedDuration}
+              onChange={handleDurationChange}
+            />
 
             <Text style={styles.sheetLabel}>Mode</Text>
             <View style={styles.pillRow}>

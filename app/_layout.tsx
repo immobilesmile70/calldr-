@@ -71,6 +71,52 @@ export default function RootLayout() {
     }
   }, [user, userDoc, loading, fontsLoaded, segments, rootNavigationState?.key]);
 
+  // Web Service Worker & OS Notification registration
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    navigator.serviceWorker
+      .register('/sw.js')
+      .catch((err) => {
+        console.warn('[SW] Registration failed:', err);
+      });
+
+    // Request notification permission if not yet decided
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+
+    // Listen for SW messages (e.g. DECLINE_CALL, ACCEPT_CALL from notification click)
+    const handleSwMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data) return;
+      if (data.type === 'DECLINE_CALL') {
+        if (user) {
+          deleteIncoming(user.uid).catch(() => {});
+        }
+      } else if (data.type === 'ACCEPT_CALL') {
+        if (user && data.roomId) {
+          deleteIncoming(user.uid).catch(() => {});
+          router.replace({
+            pathname: '/(call)/active',
+            params: {
+              roomId: data.roomId,
+              role: 'callee',
+              contactName: data.callerName || 'Caller',
+              video: String(data.video ?? false),
+              durationSec: String(data.durationSec ?? 300),
+            },
+          });
+        }
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    };
+  }, [user]);
+
   // RTDB incoming call listener (active on web and native foreground)
   useEffect(() => {
     if (!user) return;
@@ -81,6 +127,12 @@ export default function RootLayout() {
       if (unwatch) return;
       unwatch = watchIncoming(user.uid, (incoming) => {
         if (!incoming || !incoming.roomId) {
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: 'CLOSE_CALL_NOTIFICATION',
+              roomId: lastHandledRoomIdRef.current,
+            });
+          }
           lastHandledRoomIdRef.current = null;
           return;
         }
@@ -98,6 +150,31 @@ export default function RootLayout() {
         }
 
         lastHandledRoomIdRef.current = incoming.roomId;
+
+        // Show OS-level notification on Web if tab is backgrounded or notifications are enabled
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+          navigator.serviceWorker?.ready?.then((reg) => {
+            const minutes = Math.round((incoming.durationSec || 300) / 60);
+            reg.showNotification(`Incoming ${incoming.video ? 'Video' : 'Voice'} Call`, {
+              body: `${incoming.callerName} is calling you (${minutes}m limit)`,
+              icon: '/favicon.ico',
+              badge: '/favicon.ico',
+              tag: `incoming-call-${incoming.roomId}`,
+              renotify: true,
+              requireInteraction: true,
+              data: {
+                roomId: incoming.roomId,
+                callerName: incoming.callerName,
+                video: incoming.video,
+                durationSec: incoming.durationSec,
+              },
+              actions: [
+                { action: 'accept', title: 'Accept' },
+                { action: 'decline', title: 'Decline' },
+              ],
+            } as any).catch(() => {});
+          });
+        }
 
         router.push({
           pathname: '/(call)/incoming',

@@ -18,6 +18,13 @@ if (Platform.OS !== 'web') {
   InCallManager = require('react-native-incall-manager').default;
 }
 
+import { hapticCameraSwitch } from '@/lib/callSounds';
+
+export interface AudioDeviceInfo {
+  deviceId: string;
+  label: string;
+}
+
 export interface MediaState {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
@@ -26,6 +33,9 @@ export interface MediaState {
   speakerOn: boolean;
   permissionDenied: boolean;
   ready: boolean;
+  isFrontCamera: boolean;
+  audioDevices: AudioDeviceInfo[];
+  selectedAudioDeviceId: string;
 }
 
 /**
@@ -42,6 +52,9 @@ export function useMedia(
   const [micMuted, setMicMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true); // default speakerphone on so call audio is audible without proximity sensor
+  const [isFrontCamera, setIsFrontCamera] = useState(true);
+  const [audioDevices, setAudioDevices] = useState<AudioDeviceInfo[]>([]);
+  const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string>('default');
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [ready, setReady] = useState(false);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -55,6 +68,36 @@ export function useMedia(
     } catch {
       // ignore wake lock errors if not active or unsupported
     }
+  }, []);
+
+  // Enumerate audio input devices (web)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+      return;
+    }
+
+    const loadDevices = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputs = devices
+          .filter((d) => d.kind === 'audioinput')
+          .map((d, i) => ({
+            deviceId: d.deviceId,
+            label: d.label || `Microphone ${i + 1}`,
+          }));
+        if (inputs.length > 0) {
+          setAudioDevices(inputs);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    loadDevices();
+    navigator.mediaDevices.addEventListener?.('devicechange', loadDevices);
+    return () => {
+      navigator.mediaDevices.removeEventListener?.('devicechange', loadDevices);
+    };
   }, []);
 
   // Acquire media
@@ -157,10 +200,48 @@ export function useMedia(
 
   const handleFlipCamera = useCallback(() => {
     const stream = localStreamRef.current;
-    if (stream) flipCamera(stream).catch(() => {});
+    if (stream) {
+      hapticCameraSwitch();
+      setIsFrontCamera((prev) => !prev);
+      flipCamera(stream).catch(() => {});
+    }
   }, []);
 
   const [, setTrackVer] = useState(0);
+
+  const switchAudioDevice = useCallback(async (deviceId: string) => {
+    setSelectedAudioDeviceId(deviceId);
+    if (Platform.OS !== 'web' || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      return;
+    }
+    const currentStream = localStreamRef.current;
+    if (!currentStream) return;
+
+    try {
+      const newMedia = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: { exact: deviceId },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      const newTrack = newMedia.getAudioTracks()[0];
+      if (!newTrack) return;
+
+      const oldTrack = currentStream.getAudioTracks()[0];
+      if (oldTrack) {
+        oldTrack.stop();
+        currentStream.removeTrack(oldTrack);
+      }
+      currentStream.addTrack(newTrack);
+      setLocalStream(new MediaStream(currentStream.getTracks()));
+      setMicMuted(false);
+      setTrackVer((v) => v + 1);
+    } catch (err) {
+      console.warn('[useMedia] Failed to switch microphone:', err);
+    }
+  }, []);
 
   const setRemote = useCallback((stream: MediaStream) => {
     setRemoteStream(stream);
@@ -188,6 +269,10 @@ export function useMedia(
     micMuted,
     camOff,
     speakerOn,
+    isFrontCamera,
+    audioDevices,
+    selectedAudioDeviceId,
+    switchAudioDevice,
     permissionDenied,
     ready,
     toggleMic,

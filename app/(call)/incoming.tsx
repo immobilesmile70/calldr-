@@ -16,6 +16,13 @@ import { dismissCallNotification } from '@/notifications/notifee';
 import { useAuth } from '@/lib/useAuth';
 import { colors, spacing, fontSize, radii } from '@/theme/tokens';
 
+import {
+  startIncomingRingtone,
+  stopIncomingRingtone,
+  hapticPickup,
+  hapticCallCut,
+} from '@/lib/callSounds';
+
 export default function IncomingCallScreen() {
   const { user } = useAuth();
   const { roomId, callerName, video, durationSec } = useLocalSearchParams<{
@@ -29,6 +36,14 @@ export default function IncomingCallScreen() {
   const durationMin = Math.round(parseInt(durationSec ?? '300', 10) / 60);
   const modeLabel = isVideo ? 'Video' : 'Audio';
 
+  // Ringtone playback on mount
+  useEffect(() => {
+    startIncomingRingtone();
+    return () => {
+      stopIncomingRingtone();
+    };
+  }, []);
+
   // Watch for caller cancelling or call ending while ringing
   useEffect(() => {
     if (!roomId) return;
@@ -40,6 +55,7 @@ export default function IncomingCallScreen() {
         room.state === 'missed' ||
         room.state === 'declined'
       ) {
+        stopIncomingRingtone();
         if (user?.uid) {
           deleteIncoming(user.uid).catch(() => {});
         }
@@ -55,11 +71,19 @@ export default function IncomingCallScreen() {
   }, [roomId, user?.uid]);
 
   const handleAccept = useCallback(() => {
+    stopIncomingRingtone();
+    hapticPickup();
     if (user?.uid) {
       deleteIncoming(user.uid).catch(() => {});
     }
     if (Platform.OS === 'android' && roomId) {
       dismissCallNotification(roomId).catch(() => {});
+    }
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'CLOSE_CALL_NOTIFICATION',
+        roomId,
+      });
     }
     router.replace({
       pathname: '/(call)/active',
@@ -74,6 +98,8 @@ export default function IncomingCallScreen() {
   }, [roomId, callerName, video, durationSec, user?.uid]);
 
   const handleDecline = useCallback(async () => {
+    stopIncomingRingtone();
+    hapticCallCut();
     try {
       await setCallState(roomId!, 'declined', { endedBy: user?.uid });
     } catch { /* ignore */ }
@@ -82,6 +108,12 @@ export default function IncomingCallScreen() {
     }
     if (Platform.OS === 'android' && roomId) {
       dismissCallNotification(roomId).catch(() => {});
+    }
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'CLOSE_CALL_NOTIFICATION',
+        roomId,
+      });
     }
     router.replace('/(main)/home');
   }, [roomId, user?.uid]);

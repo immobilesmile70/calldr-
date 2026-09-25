@@ -5,7 +5,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { AppState, Platform } from 'react-native';
 import { AuthContext, useAuthProvider } from '@/lib/useAuth';
-import { watchIncoming, deleteIncoming } from '@/firebase/rtdb';
+import { watchIncoming, deleteIncoming, setCallState } from '@/firebase/rtdb';
+import { showIncomingCallNotification, dismissCallNotification } from '@/notifications/notifee';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -117,7 +118,7 @@ export default function RootLayout() {
     };
   }, [user]);
 
-  // RTDB incoming call listener (active on web and native foreground)
+  // RTDB incoming call listener (active on web and native foreground/background)
   useEffect(() => {
     if (!user) return;
 
@@ -133,6 +134,9 @@ export default function RootLayout() {
               roomId: lastHandledRoomIdRef.current,
             });
           }
+          if (Platform.OS === 'android' && lastHandledRoomIdRef.current) {
+            dismissCallNotification(lastHandledRoomIdRef.current).catch(() => {});
+          }
           lastHandledRoomIdRef.current = null;
           return;
         }
@@ -140,6 +144,9 @@ export default function RootLayout() {
         // Stale call (> 45s) — clean up and ignore
         if (incoming.ts && Date.now() - incoming.ts > 45_000) {
           deleteIncoming(user.uid).catch(() => {});
+          if (Platform.OS === 'android' && incoming.roomId) {
+            dismissCallNotification(incoming.roomId).catch(() => {});
+          }
           return;
         }
 
@@ -150,6 +157,19 @@ export default function RootLayout() {
         }
 
         lastHandledRoomIdRef.current = incoming.roomId;
+
+        // On Android: ALWAYS trigger native call notification (full-screen heads-up with ringtone & vibration)
+        if (Platform.OS === 'android') {
+          showIncomingCallNotification({
+            roomId: incoming.roomId,
+            callerName: incoming.callerName,
+            video: incoming.video,
+            durationSec: incoming.durationSec,
+            calleeUid: user.uid,
+          }).catch((err) => {
+            console.warn('[Notifee] showIncomingCallNotification error:', err);
+          });
+        }
 
         // Show OS-level notification on Web if tab is backgrounded or notifications are enabled
         if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
@@ -176,15 +196,18 @@ export default function RootLayout() {
           });
         }
 
-        router.push({
-          pathname: '/(call)/incoming',
-          params: {
-            roomId: incoming.roomId,
-            callerName: incoming.callerName,
-            video: String(incoming.video),
-            durationSec: String(incoming.durationSec),
-          },
-        });
+        // If app is currently active in foreground, route immediately to incoming screen
+        if (AppState.currentState === 'active') {
+          router.push({
+            pathname: '/(call)/incoming',
+            params: {
+              roomId: incoming.roomId,
+              callerName: incoming.callerName,
+              video: String(incoming.video),
+              durationSec: String(incoming.durationSec),
+            },
+          });
+        }
       });
     };
 
@@ -193,16 +216,10 @@ export default function RootLayout() {
       unwatch = undefined;
     };
 
-    // Attach when active (or on web)
-    if (Platform.OS === 'web' || AppState.currentState === 'active') attach();
-
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') attach();
-      else if (Platform.OS !== 'web') detach();
-    });
+    // Attach and keep listening while user is authenticated (do not detach on Android background)
+    attach();
 
     return () => {
-      sub.remove();
       detach();
     };
   }, [user]);
@@ -275,6 +292,7 @@ export default function RootLayout() {
             },
           });
         } else if (actionId === 'decline_call' && data.roomId) {
+          setCallState(data.roomId, 'declined', { endedBy: user.uid }).catch(() => {});
           deleteIncoming(user.uid).catch(() => {});
           notifee.cancelNotification(detail.notification.id).catch(() => {});
         }

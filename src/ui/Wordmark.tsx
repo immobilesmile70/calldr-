@@ -7,10 +7,10 @@ interface WordmarkProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-const sizeMap = {
-  sm: fontSize.xl,
-  md: fontSize['2xl'],
-  lg: fontSize['3xl'],
+const sizeConfig = {
+  sm: { fontSize: fontSize.xl, lineHeight: Math.round(fontSize.xl * 1.4) },
+  md: { fontSize: fontSize['2xl'], lineHeight: Math.round(fontSize['2xl'] * 1.4) },
+  lg: { fontSize: fontSize['3xl'], lineHeight: Math.round(fontSize['3xl'] * 1.4) },
 } as const;
 
 /**
@@ -18,8 +18,18 @@ const sizeMap = {
  * Fixed at the top of every main screen.
  */
 export function Wordmark({ style, size = 'md' }: WordmarkProps) {
+  const config = sizeConfig[size];
   return (
-    <Text style={[styles.wordmark, { fontSize: sizeMap[size] }, style]}>
+    <Text
+      style={[
+        styles.wordmark,
+        {
+          fontSize: config.fontSize,
+          lineHeight: config.lineHeight,
+        },
+        style,
+      ]}
+    >
       CalLdr
     </Text>
   );
@@ -30,7 +40,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Ogg-Medium',
     color: colors.text,
     letterSpacing: -0.5,
-    lineHeight: Math.round(fontSize['2xl'] * 1.1),
     includeFontPadding: false,
   },
 });

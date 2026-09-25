@@ -189,24 +189,59 @@ export default function ActiveCallScreen() {
   const disconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const networkCutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // PiP sizing animation
-  const pipWidthAnim = useRef(new Animated.Value(120)).current;
-  const pipHeightAnim = useRef(new Animated.Value(160)).current;
+  // Dynamic PiP sizing: base is ~28% screen width; expanded is ~48% screen width (~1/5th screen area)
+  const basePipWidth = Math.min(130, Math.max(110, Math.round(screenWidth * 0.28)));
+  const basePipHeight = Math.round(basePipWidth * 1.333);
 
+  const expandedPipWidth = Math.min(230, Math.max(190, Math.round(screenWidth * 0.48)));
+  const expandedPipHeight = Math.round(expandedPipWidth * 1.333);
+
+  const initialPipW = controlsVisible ? expandedPipWidth : basePipWidth;
+  const initialPipH = controlsVisible ? expandedPipHeight : basePipHeight;
+
+  // PiP sizing animation
+  const pipWidthAnim = useRef(new Animated.Value(initialPipW)).current;
+  const pipHeightAnim = useRef(new Animated.Value(initialPipH)).current;
+
+  // PiP PanResponder with edge snapping
+  const pan = useRef(new Animated.ValueXY({ x: screenWidth - initialPipW - 16, y: 80 })).current;
+  const currentPos = useRef({ x: screenWidth - initialPipW - 16, y: 80 });
+
+  // PiP size animation + border position correction
   useEffect(() => {
+    const curW = controlsVisible ? expandedPipWidth : basePipWidth;
+    const curH = controlsVisible ? expandedPipHeight : basePipHeight;
+
+    // Detect if PiP is currently anchored to right or left side
+    const isRightSide = currentPos.current.x + curW / 2 >= screenWidth / 2;
+    // Always keep 16px border clearance whether expanded or base
+    const targetX = isRightSide ? screenWidth - curW - 16 : 16;
+
+    const topLimit = controlsVisible ? 80 : 40;
+    const bottomLimit = controlsVisible ? screenHeight - 140 - curH : screenHeight - 40 - curH;
+    const targetY = Math.min(Math.max(currentPos.current.y, topLimit), Math.max(topLimit, bottomLimit));
+
+    currentPos.current = { x: targetX, y: targetY };
+
     Animated.parallel([
       Animated.timing(pipWidthAnim, {
-        toValue: controlsVisible ? 120 : 88,
+        toValue: curW,
         duration: 220,
         useNativeDriver: false,
       }),
       Animated.timing(pipHeightAnim, {
-        toValue: controlsVisible ? 160 : 117,
+        toValue: curH,
         duration: 220,
         useNativeDriver: false,
       }),
+      Animated.spring(pan, {
+        toValue: { x: targetX, y: targetY },
+        damping: 24,
+        stiffness: 280,
+        useNativeDriver: false,
+      }),
     ]).start();
-  }, [controlsVisible, pipWidthAnim, pipHeightAnim]);
+  }, [controlsVisible, expandedPipWidth, expandedPipHeight, basePipWidth, basePipHeight, screenWidth, screenHeight, pan, pipWidthAnim, pipHeightAnim]);
 
   // Controls auto-hide timer management
   const resetControlsTimer = useCallback(() => {
@@ -234,16 +269,6 @@ export default function ActiveCallScreen() {
     }
   }, [controlsVisible, controlsOpacity, resetControlsTimer]);
 
-  // PiP PanResponder with edge snapping
-  const pan = useRef(new Animated.ValueXY({ x: screenWidth - 120 - 16, y: 80 })).current;
-  const currentPos = useRef({ x: screenWidth - 120 - 16, y: 80 });
-
-  useEffect(() => {
-    const initX = screenWidth - (controlsVisible ? 120 : 88) - 16;
-    currentPos.current = { x: initX, y: 80 };
-    pan.setValue({ x: initX, y: 80 });
-  }, [screenWidth]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -261,8 +286,8 @@ export default function ActiveCallScreen() {
           pan.flattenOffset();
           const finalX = currentPos.current.x + gesture.dx;
           const finalY = currentPos.current.y + gesture.dy;
-          const curW = controlsVisible ? 120 : 88;
-          const curH = controlsVisible ? 160 : 117;
+          const curW = controlsVisible ? expandedPipWidth : basePipWidth;
+          const curH = controlsVisible ? expandedPipHeight : basePipHeight;
 
           const isClick = Math.abs(gesture.dx) < 6 && Math.abs(gesture.dy) < 6;
           if (isClick) {
@@ -277,9 +302,11 @@ export default function ActiveCallScreen() {
             finalX + curW / 2 < screenWidth / 2
               ? 16
               : screenWidth - curW - 16;
+          const topLimit = controlsVisible ? 80 : 40;
+          const bottomLimit = controlsVisible ? screenHeight - 140 - curH : screenHeight - 40 - curH;
           const targetY = Math.min(
-            Math.max(finalY, 70),
-            screenHeight - 160 - curH,
+            Math.max(finalY, topLimit),
+            Math.max(topLimit, bottomLimit),
           );
 
           currentPos.current = { x: targetX, y: targetY };
@@ -291,7 +318,7 @@ export default function ActiveCallScreen() {
           }).start();
         },
       }),
-    [controlsVisible, screenWidth, screenHeight, pan],
+    [controlsVisible, expandedPipWidth, expandedPipHeight, basePipWidth, basePipHeight, screenWidth, screenHeight, pan],
   );
 
   const cleanIncomingIfCallee = useCallback(() => {
@@ -490,6 +517,7 @@ export default function ActiveCallScreen() {
         <Animated.View
           style={[
             styles.pipContainer,
+            controlsVisible ? styles.pipShadow : null,
             {
               width: pipWidthAnim,
               height: pipHeightAnim,
@@ -760,13 +788,16 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderRadius: radii.md,
     overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: '#000',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: '#16161D',
     zIndex: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
+  },
+  pipShadow: {
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
     elevation: 12,
   },
   pipInner: {

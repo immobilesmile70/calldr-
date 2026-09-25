@@ -97,6 +97,11 @@ export function TimeWheelPicker({
             y: normalizedTarget * ITEM_HEIGHT,
             animated: false,
           });
+        } else {
+          scrollRef.current?.scrollTo({
+            y: index * ITEM_HEIGHT,
+            animated: true,
+          });
         }
       }
       isScrollingRef.current = false;
@@ -179,6 +184,8 @@ export function TimeWheelPicker({
         showsVerticalScrollIndicator={false}
         snapToInterval={ITEM_HEIGHT}
         decelerationRate="fast"
+        disableIntervalMomentum={true}
+        nestedScrollEnabled={true}
         onMomentumScrollEnd={handleScrollEnd}
         onScrollEndDrag={handleScrollEnd}
         contentContainerStyle={{
@@ -251,6 +258,10 @@ const styles = StyleSheet.create({
   },
   itemText: {
     fontSize: fontSize.md,
+    lineHeight: ITEM_HEIGHT,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
     color: colors.muted,
     fontWeight: '500',
     letterSpacing: -0.2,
@@ -258,6 +269,10 @@ const styles = StyleSheet.create({
   },
   itemTextSelected: {
     fontSize: fontSize.xl,
+    lineHeight: ITEM_HEIGHT,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
     fontWeight: '700',
     color: colors.text,
     opacity: 1,

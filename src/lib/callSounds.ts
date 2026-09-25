@@ -6,6 +6,15 @@ import * as Haptics from 'expo-haptics';
  * Generates standard telephone tones without external MP3 dependencies.
  */
 
+let InCallManager: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    InCallManager = require('react-native-incall-manager').default || require('react-native-incall-manager');
+  } catch (err) {
+    console.warn('[CallSounds] InCallManager not available:', err);
+  }
+}
+
 let audioCtx: AudioContext | null = null;
 
 function getAudioContext(): AudioContext | null {
@@ -35,10 +44,22 @@ let activeIncomingInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Start Outgoing Ringback Tone:
- * Standard 440 Hz + 480 Hz dual-frequency tone with 1.5s on, 2.5s off cadence.
+ * On native: plays the telephony ringback tone through InCallManager.
+ * On web: standard 440 Hz + 480 Hz dual-frequency tone with 1.5s on, 2.5s off cadence.
  */
 export function startRingbackTone(): void {
   stopRingbackTone();
+
+  if (Platform.OS !== 'web' && InCallManager) {
+    try {
+      InCallManager.start({ media: 'audio', ringback: '_DEFAULT_' });
+      InCallManager.startRingback('_DEFAULT_');
+      return;
+    } catch (err) {
+      console.warn('[CallSounds] InCallManager startRingback failed:', err);
+    }
+  }
+
   const ctx = getAudioContext();
   if (!ctx) return;
 
@@ -82,6 +103,14 @@ export function startRingbackTone(): void {
 
 /** Stop Outgoing Ringback Tone */
 export function stopRingbackTone(): void {
+  if (Platform.OS !== 'web' && InCallManager) {
+    try {
+      InCallManager.stopRingback();
+    } catch {
+      // ignore
+    }
+  }
+
   if (activeRingbackInterval) {
     clearInterval(activeRingbackInterval);
     activeRingbackInterval = null;
@@ -90,10 +119,21 @@ export function stopRingbackTone(): void {
 
 /**
  * Start Incoming Ringtone:
- * Musical chime chord repeating every 3 seconds.
+ * On native: plays the standard incoming phone ringtone through InCallManager.
+ * On web: musical chime chord repeating every 3 seconds.
  */
 export function startIncomingRingtone(): void {
   stopIncomingRingtone();
+
+  if (Platform.OS !== 'web' && InCallManager) {
+    try {
+      InCallManager.startRingtone('_DEFAULT_');
+      return;
+    } catch (err) {
+      console.warn('[CallSounds] InCallManager startRingtone failed:', err);
+    }
+  }
+
   const ctx = getAudioContext();
   if (!ctx) return;
 
@@ -129,6 +169,14 @@ export function startIncomingRingtone(): void {
 
 /** Stop Incoming Ringtone */
 export function stopIncomingRingtone(): void {
+  if (Platform.OS !== 'web' && InCallManager) {
+    try {
+      InCallManager.stopRingtone();
+    } catch {
+      // ignore
+    }
+  }
+
   if (activeIncomingInterval) {
     clearInterval(activeIncomingInterval);
     activeIncomingInterval = null;
@@ -173,6 +221,14 @@ export function playPickupChime(): void {
  * Downward soft tone signifying hang-up.
  */
 export function playCutBeep(): void {
+  if (Platform.OS !== 'web' && InCallManager) {
+    try {
+      InCallManager.stop({ busytone: '_DEFAULT_' });
+    } catch {
+      // ignore
+    }
+  }
+
   const ctx = getAudioContext();
   if (!ctx) return;
 

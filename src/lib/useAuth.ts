@@ -61,12 +61,14 @@ export function useAuthProvider() {
           setLoading(false);
         });
 
+        // Request notification permission on native
+        await requestNotificationPermission().catch(() => {});
+
         // FCM setup
         const token = await getCurrentFcmToken();
         if (token) {
           await registerFcmToken(token).catch(() => {});
         }
-        await requestNotificationPermission().catch(() => {});
       } else {
         setUserDoc(null);
         setLoading(false);

@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import notifeeInstance, {
   AndroidCategory,
   AndroidImportance,
+  AndroidVisibility,
   AndroidForegroundServiceType,
   Event,
 } from '@notifee/react-native';
@@ -30,7 +31,7 @@ export interface IncomingCallInfo {
 
 /**
  * Shows a full-screen incoming call notification (Android only).
- * Category CALL, fullScreenIntent, Accept + Decline actions, 30s timeout.
+ * Category CALL, fullScreenIntent, Accept + Decline actions, 35s timeout.
  */
 export async function showIncomingCallNotification(
   info: IncomingCallInfo,
@@ -44,6 +45,8 @@ export async function showIncomingCallNotification(
     vibration: true,
     vibrationPattern: [0, 500, 250, 500],
     sound: 'default',
+    bypassDnd: true,
+    lights: true,
   });
 
   const durationLabel = `${Math.round(info.durationSec / 60)} min`;
@@ -64,14 +67,21 @@ export async function showIncomingCallNotification(
     android: {
       channelId: INCOMING_CALL_CHANNEL_ID,
       category: AndroidCategory.CALL,
+      visibility: AndroidVisibility.PUBLIC,
       fullScreenAction: {
         id: 'full_screen',
         launchActivity: 'default',
       },
       importance: AndroidImportance.HIGH,
       ongoing: true,
-      asForegroundService: false,
-      timeoutAfter: 30_000,
+      loopSound: true,
+      sound: 'default',
+      autoCancel: false,
+      timeoutAfter: 35_000,
+      pressAction: {
+        id: 'default',
+        launchActivity: 'default',
+      },
       actions: [
         {
           title: 'Accept',

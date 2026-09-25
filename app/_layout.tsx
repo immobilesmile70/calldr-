@@ -57,8 +57,12 @@ export default function RootLayout() {
       (s) => s === '(onboarding)' || s === 'username'
     );
 
+    const isCallRoute = segs.some(
+      (s) => s === '(call)' || s === 'active' || s === 'incoming'
+    );
+
     if (!user) {
-      if (!isAuthRoute && segs.length > 0 && segs[0] !== 'index') {
+      if (!isAuthRoute && !isCallRoute && segs.length > 0 && segs[0] !== 'index') {
         router.replace('/');
       }
       return;
@@ -177,6 +181,7 @@ export default function RootLayout() {
             callerName: incoming.callerName,
             video: incoming.video,
             durationSec: incoming.durationSec,
+            calleeUid: user.uid,
           }).catch((err) => {
             console.warn('[NativeCall] showIncomingCall error:', err);
           });
@@ -279,11 +284,11 @@ export default function RootLayout() {
       }
     }).catch(() => {});
 
-    // Listen to native CallStyle broadcast actions (Answer / Decline)
+    // Listen to native CallStyle broadcast actions (Answer / Decline / Notification Click)
     const unsubNativeCallAction = subscribeCallAction((event) => {
       if (event.action === 'answer' && event.roomId) {
         lastHandledRoomIdRef.current = event.roomId;
-        deleteIncoming(user.uid).catch(() => {});
+        if (user?.uid) deleteIncoming(user.uid).catch(() => {});
         dismissNativeIncomingCall().catch(() => {});
         router.replace({
           pathname: '/(call)/active',
@@ -295,9 +300,29 @@ export default function RootLayout() {
             durationSec: String(event.durationSec ?? 300),
           },
         });
+      } else if (event.action === 'incoming' && event.roomId) {
+        lastHandledRoomIdRef.current = event.roomId;
+        router.push({
+          pathname: '/(call)/incoming',
+          params: {
+            roomId: event.roomId,
+            callerName: event.callerName || 'Caller',
+            video: String(event.video ?? false),
+            durationSec: String(event.durationSec ?? 300),
+          },
+        });
       } else if (event.action === 'decline' && event.roomId) {
-        setCallState(event.roomId, 'declined', { endedBy: user.uid }).catch(() => {});
-        deleteIncoming(user.uid).catch(() => {});
+        const uid = user?.uid || event.calleeUid || '';
+        if (uid) {
+          setCallState(event.roomId, 'declined', { endedBy: uid }).catch(() => {});
+          deleteIncoming(uid).catch(() => {});
+        }
+        const apiUrl = Platform.OS === 'web' ? '/api' : (process.env.EXPO_PUBLIC_API_URL ?? '') + '/api';
+        fetch(`${apiUrl}/calls/decline`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId: event.roomId, calleeUid: uid }),
+        }).catch(() => {});
         dismissNativeIncomingCall().catch(() => {});
       }
     });

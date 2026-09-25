@@ -11,6 +11,7 @@ export interface IncomingCallOptions {
   callerName: string;
   video: boolean;
   durationSec: number;
+  calleeUid?: string;
 }
 
 export interface OngoingCallOptions {
@@ -26,6 +27,7 @@ export interface NativeCallAction {
   callerName?: string;
   video?: boolean;
   durationSec?: number;
+  calleeUid?: string;
 }
 
 /**

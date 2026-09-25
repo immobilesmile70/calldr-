@@ -1,5 +1,6 @@
 import {
   getAuth,
+  initializeAuth,
   signInWithCustomToken,
   signInWithPopup,
   GoogleAuthProvider,
@@ -7,13 +8,30 @@ import {
   onAuthStateChanged,
   User,
 } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { app } from './app';
 
-/** Initialize Auth — on native we use AsyncStorage via @react-native-firebase/auth,
- *  but since we use the JS Firebase SDK with Custom Token we just persist via getAuth.
- *  The auth state is already persisted via AsyncStorage on native through IndexedDB polyfill.
+/**
+ * Initialize Auth:
+ * - On native (Android/iOS): uses getReactNativePersistence(AsyncStorage)
+ *   so auth tokens survive app kill, backgrounding, and notification clicks.
+ * - On web: uses getAuth(app) with default IndexedDB persistence.
  */
 function createAuth() {
+  if (Platform.OS !== 'web') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { getReactNativePersistence } = require('firebase/auth');
+      if (typeof getReactNativePersistence === 'function') {
+        return initializeAuth(app, {
+          persistence: getReactNativePersistence(AsyncStorage),
+        });
+      }
+    } catch {
+      return getAuth(app);
+    }
+  }
   return getAuth(app);
 }
 

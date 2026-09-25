@@ -21,6 +21,10 @@ const InviteSchema = z.object({
 });
 
 const CancelSchema = z.object({ roomId: z.string().min(1) });
+const DeclineSchema = z.object({
+  roomId: z.string().min(1),
+  calleeUid: z.string().optional(),
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -222,6 +226,38 @@ async function handleCancel(
   return ok(res, {});
 }
 
+async function handleDecline(
+  req: VercelRequest,
+  res: VercelResponse,
+  authUid?: string,
+) {
+  const body = parseBody(res, DeclineSchema, req.body);
+  if (!body) return;
+
+  const db = getAdminDatabase();
+  const roomSnap = await db.ref(`calls/${body.roomId}`).get();
+
+  if (!roomSnap.exists()) {
+    return err(res, 'Room not found.', 404);
+  }
+
+  const room = roomSnap.val() as CallRoom;
+  const calleeUid = authUid || body.calleeUid || room.calleeUid;
+  if (authUid && room.calleeUid !== authUid && room.callerUid !== authUid) {
+    return err(res, 'Not authorized.', 403);
+  }
+
+  // Set declined + clear incoming atomically
+  await db.ref().update({
+    [`calls/${body.roomId}/state`]: 'declined',
+    [`calls/${body.roomId}/endedAt`]: admin.database.ServerValue.TIMESTAMP,
+    [`calls/${body.roomId}/endedBy`]: calleeUid,
+    [`incoming/${room.calleeUid}`]: null,
+  });
+
+  return ok(res, {});
+}
+
 async function handleIce(
   _req: VercelRequest,
   res: VercelResponse,
@@ -277,7 +313,21 @@ export default async function handler(
 ): Promise<void> {
   const { action } = req.query as { action: string };
 
-  // ICE is auth-required but read-only
+  if (action === 'decline' && req.method === 'POST') {
+    let uid: string | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const decoded = await getAdminApp().auth().verifyIdToken(authHeader.slice(7));
+        uid = decoded.uid;
+      } catch {
+        // ignore
+      }
+    }
+    return void (await handleDecline(req, res, uid));
+  }
+
+  // All other actions require valid authentication
   const decoded = await requireAuth(req, res);
   if (!decoded) return;
 

@@ -446,18 +446,36 @@ export default function ActiveCallScreen() {
     },
   });
 
-  // Outgoing ringback & pickup tone lifecycle + ensure audio routing on connect
+  const ringbackStartedRef = useRef(false);
+  const pickupPlayedRef = useRef(false);
+  const ensureAudioRoutingRef = useRef(media.ensureAudioRouting);
+  ensureAudioRoutingRef.current = media.ensureAudioRouting;
+
+  // Outgoing ringback lifecycle (starts once on ringing, flushes immediately on any state change)
   useEffect(() => {
     if (room?.state === 'ringing' && isCaller) {
-      startRingbackTone();
+      if (!ringbackStartedRef.current) {
+        ringbackStartedRef.current = true;
+        startRingbackTone();
+      }
     } else {
-      stopRingbackTone();
+      if (ringbackStartedRef.current) {
+        ringbackStartedRef.current = false;
+        stopRingbackTone();
+      }
     }
+  }, [room?.state, isCaller]);
 
+  // Pickup chime & ongoing call notification (executes EXACTLY ONCE on connection)
+  useEffect(() => {
     if (room?.state === 'active') {
-      playPickupChime();
-      hapticPickup();
-      media.ensureAudioRouting();
+      stopRingbackTone();
+      if (!pickupPlayedRef.current) {
+        pickupPlayedRef.current = true;
+        playPickupChime();
+        hapticPickup();
+      }
+      ensureAudioRoutingRef.current();
       showNativeOngoingCall({
         contactName: contactName ?? 'Call',
         video: resolvedIsVideo,
@@ -465,7 +483,7 @@ export default function ActiveCallScreen() {
         roomId: roomId ?? undefined,
       }).catch(() => {});
     }
-  }, [room?.state, isCaller, media, contactName, resolvedIsVideo, roomId, room?.answeredAt]);
+  }, [room?.state, contactName, resolvedIsVideo, roomId, room?.answeredAt]);
 
   // Watch for remote hang-up
   useEffect(() => {
@@ -512,6 +530,8 @@ export default function ActiveCallScreen() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      ringbackStartedRef.current = false;
+      pickupPlayedRef.current = false;
       stopAllCallSounds();
       releaseMediaRef.current();
       cleanIncomingIfCallee();

@@ -34,6 +34,7 @@ export async function handleBackgroundFCM(
             callerName,
             video,
             durationSec,
+            calleeUid,
           });
         } else {
           await showIncomingCallNotification({

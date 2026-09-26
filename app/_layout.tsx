@@ -168,7 +168,12 @@ export default function RootLayout() {
 
         const segs = segmentsRef.current as string[];
         const inCall = segs.some((s) => s === '(call)' || s === 'incoming' || s === 'active');
-        if (inCall && lastHandledRoomIdRef.current === incoming.roomId) {
+        if (inCall) {
+          // If we are already handling or participating in this room, or currently in any active call, do NOT disrupt
+          if (lastHandledRoomIdRef.current === incoming.roomId) {
+            return;
+          }
+          console.log('[Layout] User is already in a call, ignoring conflicting incoming call:', incoming.roomId);
           return;
         }
 
@@ -301,6 +306,11 @@ export default function RootLayout() {
           },
         });
       } else if (event.action === 'incoming' && event.roomId) {
+        const segs = segmentsRef.current as string[];
+        const inCall = segs.some((s) => s === '(call)' || s === 'incoming' || s === 'active');
+        if (inCall) {
+          return;
+        }
         lastHandledRoomIdRef.current = event.roomId;
         router.push({
           pathname: '/(call)/incoming',

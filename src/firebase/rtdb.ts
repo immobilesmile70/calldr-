@@ -78,6 +78,18 @@ export async function setCallState(
   }
   if (state === 'ended' || state === 'declined' || state === 'cancelled' || state === 'missed') {
     updates.endedAt = serverTimestamp();
+    try {
+      const snap = await get(ref(rtdb, `calls/${roomId}`));
+      if (snap.exists()) {
+        const val = snap.val() as CallRoom;
+        if (val?.callerUid && val?.calleeUid) {
+          const [u1, u2] = [val.callerUid, val.calleeUid].sort();
+          await remove(ref(rtdb, `active_pairs/${u1}_${u2}`)).catch(() => {});
+        }
+      }
+    } catch {
+      // ignore
+    }
   }
   await update(ref(rtdb, `calls/${roomId}`), updates);
 }

@@ -111,8 +111,12 @@ export function useMedia(
         setLocalStream(stream);
         setReady(true);
 
-        // Start in-call manager
-        InCallManager?.start({ media: video ? 'video' : 'audio' });
+        // Start in-call manager: use media: 'video' so Android audio defaults to SPEAKER_PHONE and prevents proximity sensor blackout
+        InCallManager?.start({ media: 'video' });
+        InCallManager?.setMicrophoneMute(false);
+        if (typeof (InCallManager as any)?.chooseAudioRoute === 'function') {
+          (InCallManager as any).chooseAudioRoute('SPEAKER_PHONE');
+        }
         InCallManager?.setSpeakerphoneOn(true);
         InCallManager?.setForceSpeakerphoneOn(true);
       } catch (err) {
@@ -193,8 +197,13 @@ export function useMedia(
 
   const toggleSpeaker = useCallback(() => {
     const newSpeaker = !speakerOn;
-    InCallManager?.setForceSpeakerphoneOn(newSpeaker);
-    InCallManager?.setSpeakerphoneOn(newSpeaker);
+    if (InCallManager) {
+      if (typeof (InCallManager as any).chooseAudioRoute === 'function') {
+        (InCallManager as any).chooseAudioRoute(newSpeaker ? 'SPEAKER_PHONE' : 'EARPIECE');
+      }
+      InCallManager.setForceSpeakerphoneOn(newSpeaker);
+      InCallManager.setSpeakerphoneOn(newSpeaker);
+    }
     setSpeakerOn(newSpeaker);
   }, [speakerOn]);
 
@@ -257,15 +266,18 @@ export function useMedia(
   const ensureAudioRouting = useCallback(() => {
     if (Platform.OS !== 'web' && InCallManager) {
       try {
-        InCallManager.start({ media: video ? 'video' : 'audio' });
+        InCallManager.start({ media: 'video' });
         InCallManager.setMicrophoneMute(false);
+        if (typeof (InCallManager as any).chooseAudioRoute === 'function') {
+          (InCallManager as any).chooseAudioRoute(speakerOn ? 'SPEAKER_PHONE' : 'EARPIECE');
+        }
         InCallManager.setForceSpeakerphoneOn(speakerOn);
         InCallManager.setSpeakerphoneOn(speakerOn);
       } catch (err) {
         console.warn('[useMedia] ensureAudioRouting error:', err);
       }
     }
-  }, [video, speakerOn]);
+  }, [speakerOn]);
 
   const releaseMedia = useCallback(() => {
     const stream = localStreamRef.current;

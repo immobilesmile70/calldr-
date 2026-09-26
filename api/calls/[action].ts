@@ -103,12 +103,60 @@ async function handleInvite(
   }
 
   const db = getAdminDatabase();
+  const [u1, u2] = [callerUid, calleeUid].sort();
+  const pairKey = `active_pairs/${u1}_${u2}`;
+  const now = Date.now();
 
-  // Busy check: look for existing active/ringing room for callee
+  // 1. Check for Glare / Collision on active pair (e.g. both users calling each other)
+  const activePairSnap = await db.ref(pairKey).get();
+  if (activePairSnap.exists()) {
+    const pairData = activePairSnap.val() as { roomId?: string; callerUid?: string; createdAt?: number };
+    if (pairData?.roomId) {
+      const roomSnap = await db.ref(`calls/${pairData.roomId}`).get();
+      if (roomSnap.exists()) {
+        const existingRoom = roomSnap.val() as CallRoom;
+        const isRecent = pairData.createdAt ? now - pairData.createdAt < 45_000 : false;
+        if (
+          isRecent &&
+          (existingRoom.state === 'ringing' || existingRoom.state === 'active')
+        ) {
+          // Glare detected: Callee already initiated a call to Caller!
+          if (pairData.callerUid === calleeUid) {
+            // Both users called each other simultaneously! Join existing call as callee.
+            await db.ref(`incoming/${callerUid}`).remove();
+            return ok(res, { roomId: pairData.roomId, role: 'callee' });
+          }
+          // Same user repeated invite
+          if (pairData.callerUid === callerUid) {
+            return ok(res, { roomId: pairData.roomId, role: 'caller' });
+          }
+        }
+      }
+    }
+    // Stale pair record, clean up
+    await db.ref(pairKey).remove();
+  }
+
+  // 2. Check incoming queue of callerUid (if calleeUid is already calling callerUid)
+  const callerIncomingSnap = await db.ref(`incoming/${callerUid}`).get();
+  if (callerIncomingSnap.exists()) {
+    const incomingData = callerIncomingSnap.val() as { roomId?: string; callerUid?: string; ts?: number };
+    if (incomingData?.callerUid === calleeUid && incomingData?.roomId) {
+      const roomSnap = await db.ref(`calls/${incomingData.roomId}`).get();
+      if (roomSnap.exists()) {
+        const room = roomSnap.val() as CallRoom;
+        if (room.state === 'ringing' || room.state === 'active') {
+          await db.ref(`incoming/${callerUid}`).remove();
+          return ok(res, { roomId: incomingData.roomId, role: 'callee' });
+        }
+      }
+    }
+  }
+
+  // 3. Busy check: look for existing active/ringing room for callee
   const incomingSnap = await db.ref(`incoming/${calleeUid}`).get();
   if (incomingSnap.exists()) {
     const incomingData = incomingSnap.val() as { roomId?: string; ts?: number };
-    const now = Date.now();
     const isOld = incomingData?.ts ? now - incomingData.ts > 45_000 : false;
 
     let isStale = isOld;
@@ -141,7 +189,6 @@ async function handleInvite(
   const calleeName: string = (calleeSnap.data() as { username: string })?.username ?? '';
 
   const roomId = generateRoomId();
-  const now = Date.now();
 
   const room: CallRoom = {
     callerUid,
@@ -154,7 +201,7 @@ async function handleInvite(
     createdAt: now,
   };
 
-  // Create RTDB room + incoming atomically
+  // Create RTDB room + incoming + active_pair atomically
   await db.ref().update({
     [`calls/${roomId}`]: room,
     [`incoming/${calleeUid}`]: {
@@ -164,6 +211,11 @@ async function handleInvite(
       video,
       durationSec,
       ts: now,
+    },
+    [pairKey]: {
+      roomId,
+      callerUid,
+      createdAt: now,
     },
   });
 
@@ -208,11 +260,14 @@ async function handleCancel(
     return err(res, 'Call is not ringing.', 400, 'NOT_RINGING');
   }
 
-  // Set cancelled + clear incoming
+  const [a1, b1] = [room.callerUid, room.calleeUid].sort();
+
+  // Set cancelled + clear incoming + clear active pair atomically
   await db.ref().update({
     [`calls/${body.roomId}/state`]: 'cancelled',
     [`calls/${body.roomId}/endedAt`]: admin.database.ServerValue.TIMESTAMP,
     [`incoming/${room.calleeUid}`]: null,
+    [`active_pairs/${a1}_${b1}`]: null,
   });
 
   // Notify callee
@@ -247,12 +302,15 @@ async function handleDecline(
     return err(res, 'Not authorized.', 403);
   }
 
-  // Set declined + clear incoming atomically
+  const [a1, b1] = [room.callerUid, room.calleeUid].sort();
+
+  // Set declined + clear incoming + clear active pair atomically
   await db.ref().update({
     [`calls/${body.roomId}/state`]: 'declined',
     [`calls/${body.roomId}/endedAt`]: admin.database.ServerValue.TIMESTAMP,
     [`calls/${body.roomId}/endedBy`]: calleeUid,
     [`incoming/${room.calleeUid}`]: null,
+    [`active_pairs/${a1}_${b1}`]: null,
   });
 
   return ok(res, {});

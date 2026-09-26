@@ -194,32 +194,33 @@ export default function HomeScreen() {
           video: isVideo,
         }),
       });
-      const data = await resp.json() as { ok: boolean; data?: { roomId: string }; error?: string };
+      const data = await resp.json() as { ok: boolean; data?: { roomId: string; role?: 'caller' | 'callee' }; error?: string };
       if (!data.ok) {
         Alert.alert('Call failed', data.error ?? 'Could not start call. Try again.');
         return;
       }
       roomId = data.data?.roomId ?? null;
+      const role = data.data?.role ?? 'caller';
+
+      if (roomId) {
+        setCallSheetContact(null);
+        router.push({
+          pathname: '/(call)/active',
+          params: {
+            roomId,
+            role,
+            contactName,
+            video: String(isVideo),
+            durationSec: String(durationSeconds),
+          },
+        });
+      }
     } catch (err) {
       console.warn('[Call] API invite failed:', err);
       Alert.alert('Network error', 'Check your connection and try again.');
       return;
     } finally {
       setCallLoading(false);
-    }
-
-    if (roomId) {
-      setCallSheetContact(null);
-      router.push({
-        pathname: '/(call)/active',
-        params: {
-          roomId,
-          role: 'caller',
-          contactName,
-          video: String(isVideo),
-          durationSec: String(durationSeconds),
-        },
-      });
     }
   }, [callSheetContact, selectedDuration, selectedMode]);
 

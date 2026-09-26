@@ -237,7 +237,7 @@ export function useSignaling({
         }
       }
 
-      // 2. Callee: read offer, set remote desc, attach local tracks, create answer, set local desc, flush ICE!
+      // 2. Callee: attach local tracks, read offer, set remote desc, create answer, set local desc, flush ICE!
       if (
         !isCaller &&
         updatedRoom.offer &&
@@ -250,19 +250,39 @@ export function useSignaling({
         isProcessingOfferRef.current = true;
         try {
           if (remotePc.signalingState === 'stable') {
-            const offerDesc = JSON.parse(updatedRoom.offer) as RTCSessionDescriptionInit;
-            console.log('[WebRTC] Callee setting remote offer SDP');
-            await remotePc.setRemoteDescription(offerDesc);
-            hasProcessedOfferRef.current = true;
-
+            // Attach local tracks before setting remote offer so libwebrtc defaults to sendrecv
             const stream = await waitForLocalStream(10000);
             if (isClosingRef.current || !pcRef.current) return;
             if (stream) {
               addTracksToPc(remotePc, stream);
             }
 
+            const offerDesc = JSON.parse(updatedRoom.offer) as RTCSessionDescriptionInit;
+            console.log('[WebRTC] Callee setting remote offer SDP');
+            await remotePc.setRemoteDescription(offerDesc);
+            hasProcessedOfferRef.current = true;
+
+            // Ensure any transceivers matched with remote offer are set to sendrecv
+            if (stream) {
+              addTracksToPc(remotePc, stream);
+            }
+            if (typeof remotePc.getTransceivers === 'function') {
+              for (const tr of remotePc.getTransceivers()) {
+                if (tr.direction !== 'sendrecv') {
+                  try {
+                    tr.direction = 'sendrecv';
+                  } catch {
+                    // ignore
+                  }
+                }
+              }
+            }
+
             console.log('[WebRTC] Callee creating answer');
-            const answer = await remotePc.createAnswer();
+            const answer = await remotePc.createAnswer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: isVideoCall,
+            });
             await remotePc.setLocalDescription(answer);
 
             // Flush queued ICE candidates AFTER both remote and local descriptions are established!

@@ -52,9 +52,13 @@ export async function showNativeIncomingCall(options: IncomingCallOptions): Prom
 export async function showNativeOngoingCall(options: OngoingCallOptions): Promise<void> {
   if (Platform.OS !== 'android' || !CallNotificationModule) return;
   try {
+    const validStartTime =
+      typeof options.startTimeMs === 'number' && !isNaN(options.startTimeMs) && options.startTimeMs > 0
+        ? options.startTimeMs
+        : Date.now();
     await CallNotificationModule.showOngoingCall({
       ...options,
-      startTimeMs: options.startTimeMs ?? Date.now(),
+      startTimeMs: validStartTime,
     });
   } catch (err) {
     console.warn('[NativeCall] showOngoingCall failed:', err);

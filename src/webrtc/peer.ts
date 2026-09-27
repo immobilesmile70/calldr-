@@ -18,27 +18,42 @@ export interface IceServer {
 }
 
 export const HIGH_AVAILABILITY_STUN_SERVERS: IceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:global.stun.twilio.com:3478' },
-  { urls: 'stun:stun.nextcloud.com:3478' },
-  { urls: 'stun:stun.voip.blackberry.com:3478' },
-  { urls: 'stun:stun.miwifi.com:3478' },
-  { urls: 'stun:stun.l.google.com:19302' },
 ];
 
-export async function fetchIceServers(idToken: string): Promise<IceServer[]> {
+let cachedIceServers: IceServer[] | null = null;
+let cacheTimestamp = 0;
+const ICE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+export async function fetchIceServers(idToken?: string | null): Promise<IceServer[]> {
+  const now = Date.now();
+  if (cachedIceServers && now - cacheTimestamp < ICE_CACHE_TTL_MS) {
+    return cachedIceServers;
+  }
+
   try {
-    const resp = await fetch(`${API_URL}/calls/ice`, {
-      headers: { Authorization: `Bearer ${idToken}` },
+    const headers: Record<string, string> = {};
+    if (idToken) headers.Authorization = `Bearer ${idToken}`;
+
+    const fetchPromise = fetch(`${API_URL}/calls/ice`, { headers }).then(async (resp) => {
+      if (!resp.ok) return HIGH_AVAILABILITY_STUN_SERVERS;
+      const data = (await resp.json()) as { data?: { iceServers?: IceServer[] } };
+      return data?.data?.iceServers && data.data.iceServers.length > 0
+        ? data.data.iceServers
+        : HIGH_AVAILABILITY_STUN_SERVERS;
     });
-    if (!resp.ok) {
-      console.warn('[WebRTC] Failed to fetch ICE servers, using high-availability STUN');
-      return HIGH_AVAILABILITY_STUN_SERVERS;
-    }
-    const data = (await resp.json()) as { data?: { iceServers?: IceServer[] } };
-    return data?.data?.iceServers && data.data.iceServers.length > 0
-      ? data.data.iceServers
-      : HIGH_AVAILABILITY_STUN_SERVERS;
+
+    // 1500ms timeout race so slow mobile cellular DNS/network never blocks peer connection setup
+    const timeoutPromise = new Promise<IceServer[]>((resolve) => {
+      setTimeout(() => resolve(HIGH_AVAILABILITY_STUN_SERVERS), 1500);
+    });
+
+    const servers = await Promise.race([fetchPromise, timeoutPromise]);
+    cachedIceServers = servers;
+    cacheTimestamp = now;
+    return servers;
   } catch (err) {
     console.warn('[WebRTC] Error fetching ICE servers, using high-availability STUN:', err);
     return HIGH_AVAILABILITY_STUN_SERVERS;
@@ -68,7 +83,8 @@ export function createPeerConnection(opts: PeerOptions): AnyPC {
 
   const pc: AnyPC = new RTCPeerConnection({
     iceServers: opts.iceServers,
-    iceCandidatePoolSize: 10,
+    // On mobile cellular, pre-gathering 10 ports saturates carrier NAT socket buffers; use 0 on native, 2 on web
+    iceCandidatePoolSize: Platform.OS === 'web' ? 2 : 0,
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
   });

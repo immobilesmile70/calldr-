@@ -479,7 +479,7 @@ export default function ActiveCallScreen() {
       showNativeOngoingCall({
         contactName: contactName ?? 'Call',
         video: resolvedIsVideo,
-        startTimeMs: room?.answeredAt || Date.now(),
+        startTimeMs: typeof room?.answeredAt === 'number' ? room.answeredAt : Date.now(),
         roomId: roomId ?? undefined,
       }).catch(() => {});
     }

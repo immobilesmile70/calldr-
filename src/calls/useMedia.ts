@@ -115,7 +115,11 @@ export function useMedia(
         InCallManager?.start({ media: 'video' });
         InCallManager?.setMicrophoneMute(false);
         if (typeof (InCallManager as any)?.chooseAudioRoute === 'function') {
-          (InCallManager as any).chooseAudioRoute('SPEAKER_PHONE');
+          try {
+            (InCallManager as any).chooseAudioRoute('SPEAKER_PHONE')?.catch?.(() => {});
+          } catch {
+            // ignore
+          }
         }
         InCallManager?.setSpeakerphoneOn(true);
         InCallManager?.setForceSpeakerphoneOn(true);
@@ -199,7 +203,11 @@ export function useMedia(
     const newSpeaker = !speakerOn;
     if (InCallManager) {
       if (typeof (InCallManager as any).chooseAudioRoute === 'function') {
-        (InCallManager as any).chooseAudioRoute(newSpeaker ? 'SPEAKER_PHONE' : 'EARPIECE');
+        try {
+          (InCallManager as any).chooseAudioRoute(newSpeaker ? 'SPEAKER_PHONE' : 'EARPIECE')?.catch?.(() => {});
+        } catch {
+          // ignore
+        }
       }
       InCallManager.setForceSpeakerphoneOn(newSpeaker);
       InCallManager.setSpeakerphoneOn(newSpeaker);
@@ -269,7 +277,11 @@ export function useMedia(
         InCallManager.start({ media: 'video' });
         InCallManager.setMicrophoneMute(false);
         if (typeof (InCallManager as any).chooseAudioRoute === 'function') {
-          (InCallManager as any).chooseAudioRoute(speakerOn ? 'SPEAKER_PHONE' : 'EARPIECE');
+          try {
+            (InCallManager as any).chooseAudioRoute(speakerOn ? 'SPEAKER_PHONE' : 'EARPIECE')?.catch?.(() => {});
+          } catch {
+            // ignore
+          }
         }
         InCallManager.setForceSpeakerphoneOn(speakerOn);
         InCallManager.setSpeakerphoneOn(speakerOn);

@@ -25,9 +25,10 @@ export function useCallTimer(
   serverOffset: number,
   onExpire: () => void,
 ): TimerState {
+  const validAnsweredAt = typeof answeredAt === 'number' ? answeredAt : undefined;
   const [msLeft, setMsLeft] = useState<number>(
-    answeredAt && durationSec
-      ? msRemaining(computeEndsAt(answeredAt, durationSec), Date.now() + serverOffset)
+    validAnsweredAt && durationSec
+      ? msRemaining(computeEndsAt(validAnsweredAt, durationSec), Date.now() + serverOffset)
       : (durationSec ?? 0) * 1000,
   );
 
@@ -37,9 +38,10 @@ export function useCallTimer(
   onExpireRef.current = onExpire;
 
   useEffect(() => {
-    if (!answeredAt || !durationSec) return;
+    const activeAnsweredAt = typeof answeredAt === 'number' ? answeredAt : undefined;
+    if (!activeAnsweredAt || !durationSec) return;
 
-    const endsAt = computeEndsAt(answeredAt, durationSec);
+    const endsAt = computeEndsAt(activeAnsweredAt, durationSec);
 
     const tick = () => {
       const serverNow = Date.now() + serverOffset;

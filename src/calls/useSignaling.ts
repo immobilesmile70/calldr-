@@ -76,48 +76,30 @@ export function useSignaling({
   const addTracksToPc = useCallback((targetPc: any, stream: MediaStream | null) => {
     if (!targetPc || !stream) return;
     try {
-      const transceivers = typeof targetPc.getTransceivers === 'function' ? targetPc.getTransceivers() : [];
+      const currentTracks = stream.getTracks();
       const senders = typeof targetPc.getSenders === 'function' ? targetPc.getSenders() : [];
 
-      for (const track of stream.getTracks()) {
-        const existingSenderWithTrack = senders.find((s: any) => s.track === track);
-        if (existingSenderWithTrack) {
-          continue;
-        }
+      for (const track of currentTracks) {
+        // 1. If we already have a sender for this exact track, nothing to do
+        const exactSender = senders.find((s: any) => s?.track && s.track.id === track.id);
+        if (exactSender) continue;
 
-        const existingSenderSameKind = senders.find(
-          (s: any) => s.track && s.track.kind === track.kind
+        // 2. If we have an existing sender of the same kind, replace its track (camera flip, mic switch)
+        const sameKindSender = senders.find(
+          (s: any) => s?.track && s.track.kind === track.kind
         );
-        if (existingSenderSameKind && typeof existingSenderSameKind.replaceTrack === 'function') {
-          existingSenderSameKind.replaceTrack(track).catch?.(() => {});
+        if (sameKindSender && typeof sameKindSender.replaceTrack === 'function') {
+          sameKindSender.replaceTrack(track).catch?.(() => {});
           continue;
         }
 
-        const matchedTransceiver = transceivers.find((t: any) => {
-          return (
-            (t.receiver && t.receiver.track?.kind === track.kind) ||
-            (t.sender && t.sender.track?.kind === track.kind)
-          );
-        });
-
-        if (matchedTransceiver && matchedTransceiver.sender) {
-          let added = false;
-          if (typeof targetPc.addTrack === 'function' && !matchedTransceiver.sender.track) {
-            try {
-              targetPc.addTrack(track as any, stream as any);
-              added = true;
-            } catch {
-              // fallback
-            }
+        // 3. Otherwise add the track directly
+        if (typeof targetPc.addTrack === 'function') {
+          try {
+            targetPc.addTrack(track as any, stream as any);
+          } catch (err) {
+            console.warn('[WebRTC] addTrack fallback warning:', err);
           }
-          if (!added && typeof matchedTransceiver.sender.replaceTrack === 'function') {
-            matchedTransceiver.sender.replaceTrack(track).catch?.(() => {});
-          }
-          if (matchedTransceiver.direction === 'recvonly') {
-            matchedTransceiver.direction = 'sendrecv';
-          }
-        } else if (typeof targetPc.addTrack === 'function') {
-          targetPc.addTrack(track as any, stream as any);
         }
       }
     } catch (err) {
@@ -127,8 +109,14 @@ export function useSignaling({
 
   const initPeer = useCallback(async () => {
     if (!roomId) return;
-    const idToken = await getIdToken();
-    if (!idToken) return;
+
+    let idToken = await getIdToken().catch(() => null);
+    if (!idToken) {
+      for (let i = 0; i < 3 && !idToken; i++) {
+        await new Promise((r) => setTimeout(r, 200));
+        idToken = await getIdToken().catch(() => null);
+      }
+    }
 
     hasProcessedOfferRef.current = false;
     hasProcessedAnswerRef.current = false;
@@ -250,32 +238,15 @@ export function useSignaling({
         isProcessingOfferRef.current = true;
         try {
           if (remotePc.signalingState === 'stable') {
-            // Attach local tracks before setting remote offer so libwebrtc defaults to sendrecv
-            const stream = await waitForLocalStream(10000);
-            if (isClosingRef.current || !pcRef.current) return;
-            if (stream) {
-              addTracksToPc(remotePc, stream);
-            }
-
             const offerDesc = JSON.parse(updatedRoom.offer) as RTCSessionDescriptionInit;
             console.log('[WebRTC] Callee setting remote offer SDP');
             await remotePc.setRemoteDescription(offerDesc);
             hasProcessedOfferRef.current = true;
 
-            // Ensure any transceivers matched with remote offer are set to sendrecv
+            const stream = await waitForLocalStream(10000);
+            if (isClosingRef.current || !pcRef.current) return;
             if (stream) {
               addTracksToPc(remotePc, stream);
-            }
-            if (typeof remotePc.getTransceivers === 'function') {
-              for (const tr of remotePc.getTransceivers()) {
-                if (tr.direction !== 'sendrecv') {
-                  try {
-                    tr.direction = 'sendrecv';
-                  } catch {
-                    // ignore
-                  }
-                }
-              }
             }
 
             console.log('[WebRTC] Callee creating answer');
@@ -361,8 +332,10 @@ export function useSignaling({
   useEffect(() => {
     const pc = pcRef.current;
     if (!pc || !localStream) return;
+    // Callee must wait until remote offer has been processed before adding tracks
+    if (!isCaller && !hasProcessedOfferRef.current) return;
     addTracksToPc(pc, localStream);
-  }, [localStream, addTracksToPc]);
+  }, [localStream, isCaller, addTracksToPc]);
 
   useEffect(() => {
     isClosingRef.current = false;

@@ -28,6 +28,7 @@ export interface AudioDeviceInfo {
 export interface MediaState {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
+  remoteVer: number;
   micMuted: boolean;
   camOff: boolean;
   speakerOn: boolean;
@@ -49,6 +50,7 @@ export function useMedia(
 ) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [remoteVer, setRemoteVer] = useState(0);
   const [micMuted, setMicMuted] = useState(false);
   const [camOff, setCamOff] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true); // default speakerphone on so call audio is audible without proximity sensor
@@ -58,6 +60,7 @@ export function useMedia(
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [ready, setReady] = useState(false);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const isKeepAwakeActiveRef = useRef(false);
 
   const safeDeactivateKeepAwake = useCallback(async () => {
@@ -261,10 +264,13 @@ export function useMedia(
   }, []);
 
   const setRemote = useCallback((stream: MediaStream) => {
+    remoteStreamRef.current = stream;
     setRemoteStream(stream);
+    setRemoteVer((v) => v + 1);
     if (stream && typeof (stream as any).addEventListener === 'function') {
       const handleTrackChange = () => {
         setTrackVer((v) => v + 1);
+        setRemoteVer((v) => v + 1);
       };
       (stream as any).addEventListener('addtrack', handleTrackChange);
       (stream as any).addEventListener('removetrack', handleTrackChange);
@@ -296,6 +302,12 @@ export function useMedia(
     stream?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
     setLocalStream(null);
+
+    const rStream = remoteStreamRef.current;
+    rStream?.getTracks().forEach((t) => t.stop());
+    remoteStreamRef.current = null;
+    setRemoteStream(null);
+
     InCallManager?.stop();
     safeDeactivateKeepAwake();
   }, [safeDeactivateKeepAwake]);
@@ -303,6 +315,7 @@ export function useMedia(
   return {
     localStream,
     remoteStream,
+    remoteVer,
     micMuted,
     camOff,
     speakerOn,

@@ -17,11 +17,29 @@ export interface IceServer {
   credential?: string;
 }
 
-export const HIGH_AVAILABILITY_STUN_SERVERS: IceServer[] = [
+export const DEFAULT_ICE_SERVERS: IceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
   { urls: 'stun:global.stun.twilio.com:3478' },
+  { urls: 'stun:stun.relay.metered.ca:80' },
+  {
+    urls: 'turn:global.relay.metered.ca:80',
+    username: 'fb1ed35bf91aa760f988666a',
+    credential: '9bAgXvfCTEwG0WFz',
+  },
+  {
+    urls: 'turn:global.relay.metered.ca:443',
+    username: 'fb1ed35bf91aa760f988666a',
+    credential: '9bAgXvfCTEwG0WFz',
+  },
+  {
+    urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+    username: 'fb1ed35bf91aa760f988666a',
+    credential: '9bAgXvfCTEwG0WFz',
+  },
 ];
+
+export const HIGH_AVAILABILITY_STUN_SERVERS: IceServer[] = DEFAULT_ICE_SERVERS;
 
 let cachedIceServers: IceServer[] | null = null;
 let cacheTimestamp = 0;
@@ -38,26 +56,71 @@ export async function fetchIceServers(idToken?: string | null): Promise<IceServe
     if (idToken) headers.Authorization = `Bearer ${idToken}`;
 
     const fetchPromise = fetch(`${API_URL}/calls/ice`, { headers }).then(async (resp) => {
-      if (!resp.ok) return HIGH_AVAILABILITY_STUN_SERVERS;
+      if (!resp.ok) return DEFAULT_ICE_SERVERS;
       const data = (await resp.json()) as { data?: { iceServers?: IceServer[] } };
       return data?.data?.iceServers && data.data.iceServers.length > 0
         ? data.data.iceServers
-        : HIGH_AVAILABILITY_STUN_SERVERS;
+        : DEFAULT_ICE_SERVERS;
     });
 
-    // 1500ms timeout race so slow mobile cellular DNS/network never blocks peer connection setup
     const timeoutPromise = new Promise<IceServer[]>((resolve) => {
-      setTimeout(() => resolve(HIGH_AVAILABILITY_STUN_SERVERS), 1500);
+      setTimeout(() => resolve(cachedIceServers || DEFAULT_ICE_SERVERS), 3500);
     });
 
     const servers = await Promise.race([fetchPromise, timeoutPromise]);
-    cachedIceServers = servers;
-    cacheTimestamp = now;
+    const hasTurn = servers.some((s) => {
+      const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+      return urls.some((u) => u.startsWith('turn:') || u.startsWith('turns:'));
+    });
+    if (hasTurn) {
+      cachedIceServers = servers;
+      cacheTimestamp = now;
+    }
     return servers;
   } catch (err) {
-    console.warn('[WebRTC] Error fetching ICE servers, using high-availability STUN:', err);
-    return HIGH_AVAILABILITY_STUN_SERVERS;
+    console.warn('[WebRTC] Error fetching ICE servers, using default ICE configuration:', err);
+    return cachedIceServers || DEFAULT_ICE_SERVERS;
   }
+}
+
+/**
+ * Ensures audio (and video if enabled) media descriptions in SDP are set to sendrecv.
+ * This fixes react-native-webrtc ignoring createAnswer options and defaulting to recvonly.
+ */
+export function ensureSendRecvSdp(sdp: string, isVideo: boolean): string {
+  if (!sdp) return sdp;
+
+  const lines = sdp.split(/\r?\n/);
+  let currentMedia: 'audio' | 'video' | null = null;
+  const resultLines: string[] = [];
+
+  for (const line of lines) {
+    if (line == null) continue;
+    if (line.startsWith('m=audio')) {
+      currentMedia = 'audio';
+    } else if (line.startsWith('m=video')) {
+      currentMedia = 'video';
+    } else if (line.startsWith('m=')) {
+      currentMedia = null;
+    }
+
+    if (currentMedia === 'audio') {
+      if (line === 'a=recvonly' || line === 'a=sendonly' || line === 'a=inactive') {
+        resultLines.push('a=sendrecv');
+        continue;
+      }
+    } else if (currentMedia === 'video' && isVideo) {
+      if (line === 'a=recvonly' || line === 'a=sendonly' || line === 'a=inactive') {
+        resultLines.push('a=sendrecv');
+        continue;
+      }
+    }
+
+    resultLines.push(line);
+  }
+
+  const delimiter = sdp.includes('\r\n') ? '\r\n' : '\n';
+  return resultLines.join(delimiter);
 }
 
 // ── Peer connection factory ───────────────────────────────────────────────────

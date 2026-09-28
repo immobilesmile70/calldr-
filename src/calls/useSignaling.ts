@@ -12,6 +12,7 @@ import {
   fetchIceServers,
   applyBitrateConstraints,
   performIceRestart,
+  ensureSendRecvSdp,
 } from '@/webrtc/peer';
 import { getIdToken } from '@/firebase/auth';
 import { CallRoom } from '@shared/types';
@@ -57,6 +58,16 @@ export function useSignaling({
   const iceGenRef = useRef<number>(0);
   const isClosingRef = useRef(false);
   const isCaller = role ? role === 'caller' : room ? room.callerUid === myUid : false;
+  const isCallerRef = useRef(isCaller);
+  isCallerRef.current = isCaller;
+  const roleRef = useRef(role);
+  roleRef.current = role;
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const myUidRef = useRef(myUid);
+  myUidRef.current = myUid;
+  const isVideoRef = useRef(isVideo);
+  isVideoRef.current = isVideo;
 
   const onRemoteStreamRef = useRef(onRemoteStream);
   onRemoteStreamRef.current = onRemoteStream;
@@ -126,10 +137,28 @@ export function useSignaling({
 
     const iceServers = await fetchIceServers(idToken);
 
+    // Determine role: if role was passed, use it; otherwise check room; wait if needed
+    let effectiveIsCaller = roleRef.current
+      ? roleRef.current === 'caller'
+      : roomRef.current
+      ? roomRef.current.callerUid === myUidRef.current
+      : false;
+
+    if (!roleRef.current && !roomRef.current) {
+      const start = Date.now();
+      while (!roomRef.current && Date.now() - start < 3000) {
+        if (isClosingRef.current) return;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      const loadedRoom = roomRef.current as unknown as CallRoom | null;
+      effectiveIsCaller = loadedRoom ? loadedRoom.callerUid === myUidRef.current : false;
+    }
+    isCallerRef.current = effectiveIsCaller;
+
     const pc = createPeerConnection({
       iceServers,
       onIceCandidate: async (candidateJson) => {
-        const side = isCaller ? 'caller' : 'callee';
+        const side = effectiveIsCaller ? 'caller' : 'callee';
         await pushIceCandidate(roomId, side, candidateJson).catch(() => {});
       },
       onTrack: (stream) => {
@@ -143,7 +172,7 @@ export function useSignaling({
             onEndRef.current('connection_timeout');
           }, RECONNECT_TIMEOUT_MS);
 
-          if (isCaller && state === 'failed') {
+          if (effectiveIsCaller && state === 'failed') {
             // ICE restart
             try {
               iceGenRef.current++;
@@ -179,9 +208,9 @@ export function useSignaling({
       return localStreamRef.current;
     };
 
-    const isVideoCall = isVideo !== undefined ? isVideo : (room?.video ?? false);
+    const isVideoCall = isVideoRef.current !== undefined ? isVideoRef.current : (roomRef.current?.video ?? false);
 
-    if (isCaller) {
+    if (effectiveIsCaller) {
       // Caller waits for localStream so offer contains audio/video tracks
       const stream = await waitForLocalStream(10000);
       if (isClosingRef.current || !pcRef.current) return;
@@ -193,8 +222,12 @@ export function useSignaling({
         offerToReceiveAudio: true,
         offerToReceiveVideo: isVideoCall,
       });
-      await pc.setLocalDescription(offer);
-      await writeOffer(roomId, JSON.stringify(offer));
+      const offerDesc = {
+        type: offer.type,
+        sdp: ensureSendRecvSdp(offer.sdp ?? '', isVideoCall),
+      };
+      await pc.setLocalDescription(offerDesc);
+      await writeOffer(roomId, JSON.stringify(offerDesc));
 
       // Ring timeout: if still ringing after 30s, cancel
       setTimeout(async () => {
@@ -215,7 +248,7 @@ export function useSignaling({
       const queue = iceQueueRef.current!;
 
       // 1. Process and enqueue all new incoming ICE candidates FIRST
-      const mySide = isCaller ? 'callee' : 'caller'; // receive other side's ICE
+      const mySide = effectiveIsCaller ? 'callee' : 'caller'; // receive other side's ICE
       const iceData = updatedRoom.ice?.[mySide as 'caller' | 'callee'];
       if (iceData && typeof iceData === 'object') {
         for (const [key, candidateJson] of Object.entries(iceData)) {
@@ -227,7 +260,7 @@ export function useSignaling({
 
       // 2. Callee: attach local tracks, read offer, set remote desc, create answer, set local desc, flush ICE!
       if (
-        !isCaller &&
+        !effectiveIsCaller &&
         updatedRoom.offer &&
         !hasProcessedOfferRef.current &&
         !isProcessingOfferRef.current
@@ -249,11 +282,23 @@ export function useSignaling({
               addTracksToPc(remotePc, stream);
             }
 
+            if (typeof remotePc.getTransceivers === 'function') {
+              for (const tr of remotePc.getTransceivers()) {
+                if (tr.direction === 'recvonly') {
+                  tr.direction = 'sendrecv';
+                }
+              }
+            }
+
             console.log('[WebRTC] Callee creating answer');
-            const answer = await remotePc.createAnswer({
+            const rawAnswer = await remotePc.createAnswer({
               offerToReceiveAudio: true,
               offerToReceiveVideo: isVideoCall,
             });
+            const answer = {
+              type: rawAnswer.type,
+              sdp: ensureSendRecvSdp(rawAnswer.sdp ?? '', isVideoCall),
+            };
             await remotePc.setLocalDescription(answer);
 
             // Flush queued ICE candidates AFTER both remote and local descriptions are established!
@@ -277,7 +322,7 @@ export function useSignaling({
 
       // 3. Caller: read answer
       if (
-        isCaller &&
+        effectiveIsCaller &&
         updatedRoom.answer &&
         !hasProcessedAnswerRef.current &&
         !isProcessingAnswerRef.current
@@ -308,13 +353,27 @@ export function useSignaling({
       }
 
       // ICE restart: callee receives new offer (iceGen bumped)
-      if (!isCaller && updatedRoom.iceGen !== undefined && updatedRoom.iceGen > iceGenRef.current) {
+      if (!effectiveIsCaller && updatedRoom.iceGen !== undefined && updatedRoom.iceGen > iceGenRef.current) {
         iceGenRef.current = updatedRoom.iceGen;
         if (updatedRoom.offer && remotePc.remoteDescription && remotePc.signalingState === 'stable') {
           try {
             const newOffer = JSON.parse(updatedRoom.offer) as RTCSessionDescriptionInit;
             await remotePc.setRemoteDescription(newOffer);
-            const newAnswer = await remotePc.createAnswer();
+            if (typeof remotePc.getTransceivers === 'function') {
+              for (const tr of remotePc.getTransceivers()) {
+                if (tr.direction === 'recvonly') {
+                  tr.direction = 'sendrecv';
+                }
+              }
+            }
+            const rawAnswer = await remotePc.createAnswer({
+              offerToReceiveAudio: true,
+              offerToReceiveVideo: isVideoCall,
+            });
+            const newAnswer = {
+              type: rawAnswer.type,
+              sdp: ensureSendRecvSdp(rawAnswer.sdp ?? '', isVideoCall),
+            };
             await remotePc.setLocalDescription(newAnswer);
             await queue.flush();
             await writeAnswer(roomId, JSON.stringify(newAnswer));
@@ -326,16 +385,16 @@ export function useSignaling({
     });
 
     return unwatch;
-  }, [roomId, isCaller, isVideo, addTracksToPc]);
+  }, [roomId, addTracksToPc]);
 
   // Sync local tracks into peer connection whenever localStream changes
   useEffect(() => {
     const pc = pcRef.current;
     if (!pc || !localStream) return;
     // Callee must wait until remote offer has been processed before adding tracks
-    if (!isCaller && !hasProcessedOfferRef.current) return;
+    if (!isCallerRef.current && !hasProcessedOfferRef.current) return;
     addTracksToPc(pc, localStream);
-  }, [localStream, isCaller, addTracksToPc]);
+  }, [localStream, addTracksToPc]);
 
   useEffect(() => {
     isClosingRef.current = false;

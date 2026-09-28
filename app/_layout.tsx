@@ -13,6 +13,7 @@ import {
   getInitialCallAction,
   subscribeCallAction,
 } from '@/notifications/nativeCall';
+import { fetchIceServers } from '@/webrtc/peer';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -43,6 +44,11 @@ export default function RootLayout() {
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [loading, fontsLoaded]);
+
+  // Prefetch ICE servers in background so TURN relays are cached before any call
+  useEffect(() => {
+    fetchIceServers().catch(() => {});
+  }, []);
 
   // Route guard
   useEffect(() => {

@@ -580,7 +580,7 @@ export default function ActiveCallScreen() {
           {/* Fullscreen Video / Avatar background */}
           {resolvedIsVideo && bgStream && VideoRenderer ? (
             <VideoRenderer
-              key={`bg_${bgStream.id}_${bgStream.getVideoTracks?.()?.length ?? 0}`}
+              key={`bg_${bgStream.id}_${bgStream.getVideoTracks?.()?.length ?? 0}_${media.remoteVer}`}
               streamURL={(bgStream as { toURL?: () => string }).toURL?.() ?? ''}
               stream={bgStream}
               mirror={bgMirror}
@@ -620,7 +620,7 @@ export default function ActiveCallScreen() {
           {...(isNativePip ? {} : panResponder.panHandlers)}
         >
           <VideoRenderer
-            key={`pip_${pipStream.id}_${pipStream.getVideoTracks?.()?.length ?? 0}`}
+            key={`pip_${pipStream.id}_${pipStream.getVideoTracks?.()?.length ?? 0}_${media.remoteVer}`}
             streamURL={(pipStream as { toURL?: () => string }).toURL?.() ?? ''}
             stream={pipStream}
             mirror={pipMirror}

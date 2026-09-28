@@ -328,12 +328,9 @@ async function handleIce(
   const turnCredential = process.env['TURN_CREDENTIAL'];
 
   const iceServers: RTCIceServer[] = [
+    { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:global.stun.twilio.com:3478' },
-    { urls: 'stun:stun.nextcloud.com:3478' },
-    { urls: 'stun:stun.voip.blackberry.com:3478' },
-    { urls: 'stun:stun.miwifi.com:3478' },
-    { urls: 'stun:stun.l.google.com:19302' },
   ];
 
   // Option A: Fetch dynamic short-lived TURN credentials from Metered.ca REST API
@@ -371,6 +368,10 @@ export default async function handler(
 ): Promise<void> {
   const { action } = req.query as { action: string };
 
+  if (action === 'ice' && req.method === 'GET') {
+    return void (await handleIce(req, res));
+  }
+
   if (action === 'decline' && req.method === 'POST') {
     let uid: string | undefined;
     const authHeader = req.headers.authorization;
@@ -398,10 +399,6 @@ export default async function handler(
       case 'cancel':
         if (req.method !== 'POST') break;
         return void (await handleCancel(req, res, decoded.uid));
-
-      case 'ice':
-        if (req.method !== 'GET') break;
-        return void (await handleIce(req, res));
     }
 
     err(res, 'Not found', 404);
